@@ -38,11 +38,11 @@
           "height": 1.524,
           "width": 1.524
         },
-        "silk_line_width": 0.15,
+        "silk_line_width": 0.09999999999999999,
         "silk_text_italic": false,
-        "silk_text_size_h": 1.0,
-        "silk_text_size_v": 1.0,
-        "silk_text_thickness": 0.15,
+        "silk_text_size_h": 0.7,
+        "silk_text_size_v": 0.7,
+        "silk_text_thickness": 0.09999999999999999,
         "silk_text_upright": false,
         "zones": {
           "min_clearance": 0.3
@@ -120,8 +120,8 @@
         "min_microvia_drill": 0.09999999999999999,
         "min_resolved_spokes": 1,
         "min_silk_clearance": 0.0,
-        "min_text_height": 0.7999999999999999,
-        "min_text_thickness": 0.08,
+        "min_text_height": 0.7,
+        "min_text_thickness": 0.06999999999999999,
         "min_through_hole_diameter": 0.3,
         "min_track_width": 0.0,
         "min_via_annular_width": 0.09999999999999999,
@@ -485,6 +485,14 @@
     [
       "b5f4f837-223e-4733-bf81-ff5ea73b79f2",
       ""
+    ],
+    [
+      "7a612410-0ba8-41b5-8cf7-a217e8c9f015",
+      "keyboard"
+    ],
+    [
+      "d0d3cd1b-2480-4ecc-8529-6b2d39f4da58",
+      "transduction"
     ]
   ],
   "text_variables": {}

@@ -24,24 +24,24 @@ Keyboard layout:
 ---------- Default, no modifier -------
 1   2   3   4   5   6   7   8   9   0
 q   w   e   r   t   y   u   i   o   p
-  a   s   d   f   g   h   j   k   l
-CAP z   x   c   v   b   n   m   BCK DEL
-SYM  SPACESPACESPACESP   ,   .  ?   RET
+  a   s   d   f   g   h   j   k   l   DEL
+CAP z   x   c   v   b   n   m   ?   BCK
+SYM      SPACESPACESPACESP   ,   .    RET
 (plus 6 arrow keys, SEND)
 
 ---------- SYM modifier ---------------
 !   @   #   $   %   ^   &   *   (   )
 `   ~   -   _   =   +   :   ;   '   "
-  [   ]   {   }   |   \   /   <   >
-CAP z   x   c   v   b   n   m   BCK DEL
-SYM  SPACESPACESPACESP   ,   .  ?   RET
+  [   ]   {   }   |   \   /   <   >   DEL
+CAP z   x   c   v   b   n   m   ?   BCK
+SYM      SPACESPACESPACESP   ,   .    RET
 
 key count is:
     row 1: 10 keys
     row 2: 10 keys
-    row 3: 9 keys
+    row 3: 10 keys
     row 4: 10 keys
-    row 5: 6 keys
+    row 5: 5 keys
     off-grid: 6 arrow keys, 1 SEND key
 Total: 52 keys
 
@@ -92,11 +92,20 @@ TBD.
 TBD.
 
 ## Version history:
-v1.2 changes:
-    [ ] switch from teensy 4.1 to t4 for space
-    [ ] add explicit space for screen
-    [ ] add explicit space for battery
-    [ ] redo keyboard layout
-    [ ] switch keyboard sensors to qfn for thickness?
-    [ ] switch shift registers to qfn
-    [ ] make an attempt at a BOM
+v1.2 PCB changes:
+ - [X] switch from teensy 4.1 to t4 for space
+ - [X] add battery monitor circuitry
+ - [X] replicate LiIon charger circuit on it https://github.com/adafruit/Adafruit-USB-LiIon-LiPoly-Charger-PCB/tree/master
+ - [X] switch shift registers to qfn
+
+ - [ ] add ZIF connector for bare TFT
+ - [ ] redo keyboard layout
+
+ - [ ] add explicit space for screen
+ - [ ] add explicit space for battery
+ - [ ] add explicit space for transducer
+ - [ ] add explicit space for Qi charger coil + PCB
+
+ - [ ] switch keyboard sensors to qfn for thickness?
+ - [ ] make an attempt at a BOM
+ - [ ] make all passives 0402 for consistency
