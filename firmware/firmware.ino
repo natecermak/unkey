@@ -128,8 +128,7 @@ void setup_receiver() {
     initialize_goertzel(&gs[j], 3000 + (j-5)*200, adc_frequency);
   }
 
-  // setup I2C interface for setting gain on charge amplifier
-  Wire.begin();
+  // set gain on charge amplifier
   set_charge_amplifier_gain(0);
 
   // Setup ADC
@@ -158,10 +157,31 @@ void setup_transmitter() {
   pinMode(dac_cs, OUTPUT);
   digitalWrite(dac_cs, HIGH);
   // TODO: FOR TESTING ONLY:
-  set_tx_power_enable(true);
+  set_tx_power_enable(true); // tested: works
+  delay(100); // wait for power to boot
+
+  write_to_dac(0xA, 1U << 8); // A is address for config, 8th bit is gain. set to gain=2
+  write_to_dac(8, 1);  // 8 is address for VREF, 1 means use internal ref
 
 }
 
+void write_to_dac(uint8_t address, uint16_t value) {
+/*
+  MCP48CXDX1 -- 24-bit messages.
+  top byte: 5-bit address, 2 "command bits", 1 dont-care
+  bottom 2 bytes: 4 dont-care, 12 data bits
+*/
+  uint8_t buf[3];
+  buf[0] = (address << 3); // bits 1 and 2 must be 0 to write.
+  buf[1] = (uint8_t) (value >> 8);
+  buf[2] = (uint8_t) value;
+  SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+  digitalWrite(dac_cs, LOW);
+  SPI.transfer(buf, 3);
+  digitalWrite(dac_cs, HIGH);
+  SPI.endTransaction();
+
+}
 
 void poll_keyboard() {
   static int modifier = 0;
@@ -261,22 +281,25 @@ void setup() {
   delay(100);
   Serial.println("Starting setup()");
 
+  SPI.begin();
+  Wire.begin();
+  
   setup_screen();
 
   setup_receiver();
 
   setup_transmitter();
 
-  setup_keyboard_poller();
+  // because this bitbangs on SPI pins currently, turn it off for testing other SPI functions
+  // setup_keyboard_poller();
 
   Serial.println("setup() complete");
-  
 }
 
 void loop() {
-  delay(1000);
-  //SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
-  //SPI.write()
- 
- }
+  delayMicroseconds(10);
+  static uint16_t i = 0;
+  i+=100;
+  write_to_dac(0, i);
+}
 
