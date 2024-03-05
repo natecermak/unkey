@@ -1,8 +1,9 @@
 #include <ADC.h>
 #include <DMAChannel.h>
-#include "goertzel.h"
-#include <SPI.h>
 #include <ILI9341_t3n.h>
+#include <SPI.h>
+#include <Wire.h>
+#include "goertzel.h"
 
 // ------------------ PINS ----------------------------------------------- //
 const int readPin_adc_0 = 15;
@@ -18,8 +19,12 @@ const int tft_cs = 5;
 const int tft_mosi = 26;
 const int tft_sck = 27;
 
+const int tx_power_en = 32;
+const int xdcr_sw = 31;
+const int dac_cs = 10;
+
 // ------------------ ADC, DMA, and Goertzel filters -------------------- //
-ADC *adc = new ADC(); // adc object
+ADC *adc = new ADC();
 DMAChannel dma_ch1;
 
 const uint32_t adc_frequency = 81920;
@@ -30,6 +35,9 @@ uint16_t adc_buffer_copy[buffer_size];
 uint8_t print_ctr = 0;
 const uint8_t gs_len = 10;
 goertzel_state gs[gs_len];
+
+// ------------------ Charge amplifier gain ------------------------------ //
+const int adg728_i2c_address = 76;
 
 // ------------------  Keyboard poller timer and state-------------------- //
 IntervalTimer keyboard_poller_timer;
@@ -73,6 +81,17 @@ int ilog2(uint64_t x){
 }
 
 
+void set_charge_amplifier_gain(uint8_t gain_index) {
+  Wire.beginTransmission(adg728_i2c_address);   // Slave address
+  Wire.write(1U << gain_index); // Write string to I2C Tx buffer (incl. string null at end)
+  Wire.endTransmission();           // Transmit to Slave
+}
+
+inline void set_tx_power_enable(bool enable) {
+  digitalWriteFast(tx_power_en, (enable) ? HIGH : LOW);
+}
+
+
 void adc_buffer_full_interrupt() {
   dma_ch1.clearInterrupt();
   memcpy((void *) adc_buffer_copy, (void *) dma_adc_buff1, sizeof(dma_adc_buff1));
@@ -109,6 +128,10 @@ void setup_receiver() {
     initialize_goertzel(&gs[j], 3000 + (j-5)*200, adc_frequency);
   }
 
+  // setup I2C interface for setting gain on charge amplifier
+  Wire.begin();
+  set_charge_amplifier_gain(0);
+
   // Setup ADC
   adc->adc0->setAveraging(1);
   adc->adc0->setResolution(12);
@@ -127,6 +150,16 @@ void setup_receiver() {
   adc->adc0->enableDMA();
   adc->adc0->startSingleRead(readPin_adc_0);
   adc->adc0->startTimer(adc_frequency);
+}
+
+void setup_transmitter() {
+  pinMode(tx_power_en, OUTPUT);
+  pinMode(xdcr_sw, OUTPUT);
+  pinMode(dac_cs, OUTPUT);
+  digitalWrite(dac_cs, HIGH);
+  // TODO: FOR TESTING ONLY:
+  set_tx_power_enable(true);
+
 }
 
 
@@ -187,7 +220,7 @@ void poll_keyboard() {
     digitalWrite(tft_led, LOW);
   }
 
-};
+}
 
 void setup_keyboard_poller() {
   switch_state = 0;
@@ -232,6 +265,8 @@ void setup() {
 
   setup_receiver();
 
+  setup_transmitter();
+
   setup_keyboard_poller();
 
   Serial.println("setup() complete");
@@ -240,5 +275,8 @@ void setup() {
 
 void loop() {
   delay(1000);
-}
+  //SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+  //SPI.write()
+ 
+ }
 

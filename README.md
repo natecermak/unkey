@@ -97,9 +97,9 @@ v1.2 PCB changes:
  - [X] add battery monitor circuitry
  - [X] replicate LiIon charger circuit on it https://github.com/adafruit/Adafruit-USB-LiIon-LiPoly-Charger-PCB/tree/master
  - [X] switch shift registers to qfn
+ - [X] redo keyboard layout
 
  - [ ] add ZIF connector for bare TFT
- - [ ] redo keyboard layout
 
  - [ ] add explicit space for screen
  - [ ] add explicit space for battery
@@ -109,3 +109,6 @@ v1.2 PCB changes:
  - [ ] switch keyboard sensors to qfn for thickness?
  - [ ] make an attempt at a BOM
  - [ ] make all passives 0402 for consistency
+
+ - [ ] pull LAT down on MCP4, or just wire it out -- cant leave it floating
+ - [ ] CE on 5V boost wont work! needs to be always enabled, and drive a switch
