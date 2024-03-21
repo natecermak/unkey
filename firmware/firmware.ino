@@ -125,11 +125,11 @@ void setup_receiver() {
 
   // Initialize Goertzel filters (TODO: Hardcoded frequencies here)
   for (int j = 0; j < gs_len; j++) {
-    initialize_goertzel(&gs[j], 3000 + (j-5)*200, adc_frequency);
+    initialize_goertzel(&gs[j], 15000 + (j-5)*200, adc_frequency);
   }
 
   // set gain on charge amplifier
-  set_charge_amplifier_gain(0);
+  set_charge_amplifier_gain(6);
 
   // Setup ADC
   adc->adc0->setAveraging(1);
@@ -297,9 +297,8 @@ void setup() {
 }
 
 void loop() {
-  delayMicroseconds(10);
-  static uint16_t i = 0;
-  i+=100;
-  write_to_dac(0, i);
+  uint16_t val = 2048 + 128 * sin(2*3.14159*micros()/1e6 * 15e3);
+  
+  write_to_dac(0, val);
 }
 

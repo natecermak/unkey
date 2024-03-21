@@ -98,17 +98,19 @@ v1.2 PCB changes:
  - [X] replicate LiIon charger circuit on it https://github.com/adafruit/Adafruit-USB-LiIon-LiPoly-Charger-PCB/tree/master
  - [X] switch shift registers to qfn
  - [X] redo keyboard layout
+ - [X] add 40-pin ZIF connector for 3.2" TFT from buydisplay.com
+ - [X] make all passives 0402 for consistency
+ - [X] add explicit space for screen
+ - [X] add explicit space for battery
+ - [X] add explicit space for Qi charger coil + PCB
+ - [X] pull LAT down on MCP4, or just wire it out -- cant leave it floating
+ - [X] CE on 5V boost wont work! needs to be always enabled, and drive a switch
 
- - [ ] add ZIF connector for bare TFT
-
- - [ ] add explicit space for screen
- - [ ] add explicit space for battery
  - [ ] add explicit space for transducer
- - [ ] add explicit space for Qi charger coil + PCB
 
- - [ ] switch keyboard sensors to qfn for thickness?
  - [ ] make an attempt at a BOM
- - [ ] make all passives 0402 for consistency
 
- - [ ] pull LAT down on MCP4, or just wire it out -- cant leave it floating
- - [ ] CE on 5V boost wont work! needs to be always enabled, and drive a switch
+ - [ ] figure out FMARK and RD on ZIF connector for display
+
+Tests on V1.2 before ordering v.2:
+test ouptut of boost
