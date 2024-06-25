@@ -112,7 +112,5 @@ v1.3 pcb
     1. so that I can do single-sided assembly on both pieces, but then have some parts sticking up (keyboard) and some facing down (teensy/driver electronics)
     2. it makes the face of the screen flush with the face of the magnetic switches.
  - [X] fix TFT connector pin numbering (it's backwards from the connector)
-
-TODO:
- - [ ] make an attempt at a BOM
+ - [X] make an attempt at a BOM
 

@@ -7,21 +7,23 @@
 
 // ------------------ PINS ----------------------------------------------- //
 const int readPin_adc_0 = 15;
-const int kb_load_n = 9;
-const int kb_clock = 13;
-const int kb_data = 12;
+const int kb_load_n = 22;
+const int kb_clock = 23;
+const int kb_data = 21;
 
-const int tft_miso = 1;
-const int tft_led = 2;
-const int tft_dc = 3;
-const int tft_reset = 4;
-const int tft_cs = 5;
-const int tft_mosi = 26;
-const int tft_sck = 27;
+const int tft_miso = 12;
+const int tft_led = 3;
+const int tft_dc = 4;
+const int tft_reset = 5;
+const int tft_cs = 6;
+const int tft_mosi = 11;
+const int tft_sck = 13;
 
-const int tx_power_en = 32;
-const int xdcr_sw = 31;
+const int tx_power_en = 8;
+const int xdcr_sw = 7;
 const int dac_cs = 10;
+
+const int battery_monitor = 20;
 
 // ------------------ ADC, DMA, and Goertzel filters -------------------- //
 ADC *adc = new ADC();
@@ -69,6 +71,10 @@ const char KEYBOARD_LAYOUT[3][64] = {
 bool screen_on;
 const int screen_timeout_ms = 10000; // todo: this is too low, for testing only
 ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);
+
+// ------------------ Battery monitoring -------------- //
+long time_of_last_battery_read_ms;
+const long BATTERY_READ_PERIOD_MS = 1000;
 
 // ------------------ Utility functions ---------------------------------- //
 int ilog2(uint64_t x){
@@ -162,7 +168,6 @@ void setup_transmitter() {
 
   write_to_dac(0xA, 1U << 8); // A is address for config, 8th bit is gain. set to gain=2
   write_to_dac(8, 1);  // 8 is address for VREF, 1 means use internal ref
-
 }
 
 void write_to_dac(uint8_t address, uint16_t value) {
@@ -175,7 +180,7 @@ void write_to_dac(uint8_t address, uint16_t value) {
   buf[0] = (address << 3); // bits 1 and 2 must be 0 to write.
   buf[1] = (uint8_t) (value >> 8);
   buf[2] = (uint8_t) value;
-  SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+  SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
   digitalWrite(dac_cs, LOW);
   SPI.transfer(buf, 3);
   digitalWrite(dac_cs, HIGH);
@@ -237,7 +242,7 @@ void poll_keyboard() {
   }
   else if (screen_on && millis() - time_of_last_press_ms > screen_timeout_ms){
     screen_on = false;
-    digitalWrite(tft_led, LOW);
+    //digitalWrite(tft_led, LOW);
   }
 
 }
@@ -275,6 +280,23 @@ void setup_screen() {
 
 }
 
+inline float read_battery_voltage() {
+  // 2.0 for 1:1 voltage divider, 3.3V is max ADC voltage, and ADC is 12-bit (4096 values)
+  return 2.0 * analogRead(battery_monitor) * 3.3 / 4096;
+}
+
+void poll_battery() {
+  if (millis() - time_of_last_battery_read_ms > BATTERY_READ_PERIOD_MS) {
+    time_of_last_battery_read_ms = millis();
+    float battery_volts = read_battery_voltage();
+    int16_t x, y;
+    tft.getCursor(&x, &y);
+    tft.setCursor(0,0);
+    tft.printf("battery %.2fV", battery_volts);
+    tft.setCursor(x, y);
+  }
+}
+
 void setup() {
   Serial.begin(9600);
   while (!Serial && millis() < 5000) ;
@@ -286,19 +308,20 @@ void setup() {
   
   setup_screen();
 
-  setup_receiver();
+//  setup_receiver();
 
   setup_transmitter();
 
-  // because this bitbangs on SPI pins currently, turn it off for testing other SPI functions
-  // setup_keyboard_poller();
+//  setup_keyboard_poller();
 
   Serial.println("setup() complete");
 }
 
 void loop() {
-  uint16_t val = 2048 + 128 * sin(2*3.14159*micros()/1e6 * 15e3);
+  uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3);
   
   write_to_dac(0, val);
+
+  poll_battery();
 }
 
