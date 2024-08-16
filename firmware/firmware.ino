@@ -4,26 +4,29 @@
 #include <SPI.h>
 #include <Wire.h>
 #include "goertzel.h"
+#include "font_Arial.h"
 
-// ------------------ PINS ----------------------------------------------- //
+// ------------------- PINS ----------------------------------------------- //
 const int readPin_adc_0 = 15;
-const int kb_load_n = 9;
-const int kb_clock = 13;
-const int kb_data = 12;
+const int kb_load_n = 22;
+const int kb_clock = 23;
+const int kb_data = 21;
 
-const int tft_miso = 1;
-const int tft_led = 2;
-const int tft_dc = 3;
-const int tft_reset = 4;
-const int tft_cs = 5;
-const int tft_mosi = 26;
-const int tft_sck = 27;
+const int tft_miso = 12;
+const int tft_led = 3;
+const int tft_dc = 4;
+const int tft_reset = 5;
+const int tft_cs = 6;
+const int tft_mosi = 11;
+const int tft_sck = 13;
 
-const int tx_power_en = 32;
-const int xdcr_sw = 31;
+const int tx_power_en = 8;
+const int xdcr_sw = 7;
 const int dac_cs = 10;
 
-// ------------------ ADC, DMA, and Goertzel filters -------------------- //
+const int battery_monitor = 20;
+
+// ------------------- ADC, DMA, and Goertzel filters -------------------- //
 ADC *adc = new ADC();
 DMAChannel dma_ch1;
 
@@ -36,55 +39,67 @@ uint8_t print_ctr = 0;
 const uint8_t gs_len = 10;
 goertzel_state gs[gs_len];
 
-// ------------------ Charge amplifier gain ------------------------------ //
+// ------------------- Charge amplifier gain ------------------------------ //
 const int adg728_i2c_address = 76;
 
-// ------------------  Keyboard poller timer and state-------------------- //
+// ------------------- Keyboard poller timer and state-------------------- //
 IntervalTimer keyboard_poller_timer;
 const int keyboard_poller_period_usec = 10000; // run at 100 Hz
 volatile uint64_t switch_state; 
 uint32_t time_of_last_press_ms;
 
-const uint8_t SCAN_CHAIN_BIT_INDEX_TO_KB_INDEX[] = {
-  63,62,61,60,59,58,57,56,
-  47,46,45,44,43,42,41,40,
-  31,30,29,28,27,26,25,24,
-  15,14,13,12,11,10, 9, 8,
-  55,54,53,52,51,50,49,48,
-  39,38,37,36,35,34,33,32,
-  23,22,21,20,19,18,17,16,
-   7, 6, 5, 4, 3, 2, 1, 0
-};
+#define SCAN_CHAIN_LENGTH 56
 
-const uint8_t CAP_KEY_INDEX = 47;
-const uint8_t SYM_KEY_INDEX = 63;
-const uint8_t BACK_KEY_INDEX = 15;
-const char KEYBOARD_LAYOUT[3][64] = {
-  "1234567890-=_+\n\nqwertyuiop(){}\n\nasdfghjkl;:\'\"   zxcvbnm,.?     ",
-  "1234567890-=_+\n\nQWERTYUIOP(){}\n\nASDFGHJKL;:\'\"   ZXCVBNM,.?     ",
-  "!@#$%^&*()-=_+\n\nqwertyuiop(){}\n\nasdfghjkl;:\'\"   zxcvbnm,.?     "
-};
+// keyboard modifiers
+const uint8_t CAP_KEY_INDEX = 3;
+const uint8_t SYM_KEY_INDEX = 40;
 
-// ------------------ TFT LCD -------------------- //
+const uint8_t BACK_KEY_INDEX = 36;
+const uint8_t DEL_KEY_INDEX = 37;
+const uint8_t SEND_KEY_INDEX = 45;
+const uint8_t ESC_KEY_INDEX = 48;
+const uint8_t MENU_KEY_INDEX = 49;
+
+const uint8_t LEFT_KEY_INDEX = 47;
+const uint8_t UP_KEY_INDEX = 50;
+const uint8_t DOWN_KEY_INDEX = 51;
+const uint8_t RIGHT_KEY_INDEX = 46;
+
+const char * KEYBOARD_LAYOUT =      "1qa~zsw23edxcfr45tgvbhy67ujnmki89ol?~~p0~ ,.\n           ";
+const char * KEYBOARD_LAYOUT_SYM =  "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ ,.\n           ";
+
+
+// ------------------- TFT LCD ------------------------------------------- //
 bool screen_on;
 const int screen_timeout_ms = 10000; // todo: this is too low, for testing only
 ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);
 
-// ------------------ Utility functions ---------------------------------- //
+// ------------------- Transmit message field ---------------------------- //
+#define TX_DISPLAY_BUFFER_X 2
+#define TX_DISPLAY_BUFFER_Y 227
+#define TX_DISPLAY_BUFFER_SIZE 400
+char tx_display_buffer[TX_DISPLAY_BUFFER_SIZE];
+uint16_t tx_display_buffer_length;
+
+// ------------------- Battery monitoring --------------------------------- //
+long time_of_last_battery_read_ms;
+const long BATTERY_READ_PERIOD_MS = 1000;
+
+// ------------------- Utility functions ---------------------------------- //
 int ilog2(uint64_t x){
   int i = 0;
   while (x) {
     x = x >> 1;
-    i++;  
+    i++;
   }
   return i;
 }
 
 
 void set_charge_amplifier_gain(uint8_t gain_index) {
-  Wire.beginTransmission(adg728_i2c_address);   // Slave address
-  Wire.write(1U << gain_index); // Write string to I2C Tx buffer (incl. string null at end)
-  Wire.endTransmission();           // Transmit to Slave
+  Wire.beginTransmission(adg728_i2c_address);
+  Wire.write(1U << gain_index);
+  Wire.endTransmission();
 }
 
 inline void set_tx_power_enable(bool enable) {
@@ -100,7 +115,7 @@ void adc_buffer_full_interrupt() {
   dma_ch1.enable(); // Re-enable the DMA channel
 
   // process data
-  if (print_ctr++ % 64 == 0) {
+  if (print_ctr++ % SCAN_CHAIN_LENGTH == 0) {
     for (size_t i = 0; i < buffer_size; i++) {
       //Serial.printf("%d\n", adc_buffer_copy[i]);
       for (int j = 0; j < gs_len; j++) {
@@ -162,7 +177,6 @@ void setup_transmitter() {
 
   write_to_dac(0xA, 1U << 8); // A is address for config, 8th bit is gain. set to gain=2
   write_to_dac(8, 1);  // 8 is address for VREF, 1 means use internal ref
-
 }
 
 void write_to_dac(uint8_t address, uint16_t value) {
@@ -175,7 +189,7 @@ void write_to_dac(uint8_t address, uint16_t value) {
   buf[0] = (address << 3); // bits 1 and 2 must be 0 to write.
   buf[1] = (uint8_t) (value >> 8);
   buf[2] = (uint8_t) value;
-  SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+  SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
   digitalWrite(dac_cs, LOW);
   SPI.transfer(buf, 3);
   digitalWrite(dac_cs, HIGH);
@@ -195,8 +209,8 @@ void poll_keyboard() {
   // read 64 bits of shift register, takes 2.63us, runs at 23 MHz
   // Note: bitbang to avoid taking up an SPI peripheral. Requires VERY little CPU time
   uint64_t read_buffer = 0;
-  for (int bit = 0; bit < 64; bit++) {
-    read_buffer |= (uint64_t) digitalReadFast(kb_data) << SCAN_CHAIN_BIT_INDEX_TO_KB_INDEX[bit];
+  for (int bit = 0; bit < SCAN_CHAIN_LENGTH; bit++) {
+    read_buffer |= (uint64_t) digitalReadFast(kb_data) << ((SCAN_CHAIN_LENGTH - 1) - bit);
     digitalWriteFast(kb_clock, LOW);
     digitalWriteFast(kb_clock, HIGH);
     delayNanoseconds(10);
@@ -218,18 +232,27 @@ void poll_keyboard() {
       switch (key_index) {
         case CAP_KEY_INDEX:
           Serial.println("You pressed CAPS");
-          modifier = 1;
           break;
         case SYM_KEY_INDEX:
           Serial.println("You pressed SYM");
-          modifier = 2;
           break;
         case BACK_KEY_INDEX:
           Serial.println("You pressed BACKSPACE");
+          tx_display_buffer[tx_display_buffer_length] = '\0';
+          tx_display_buffer_length--;
+          redraw_tx_display_window();
+          break;
+        case SEND_KEY_INDEX:
+          // TODO: SEND DATA
+          reset_tx_display_buffer();
+          redraw_tx_display_window();
           break;
         default:
-          char key = KEYBOARD_LAYOUT[modifier][key_index];
-          tft.printf("%c", key);
+          char key = KEYBOARD_LAYOUT[key_index];
+          tx_display_buffer[tx_display_buffer_length] = key;
+          tx_display_buffer_length++;
+          tft.drawString(tx_display_buffer, tx_display_buffer_length, TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y);
+          Serial.printf("Read buffer %ul\n", ~read_buffer);
           Serial.printf("You pressed key_index=%d, key=\'%c\'\n", key_index, key);
           modifier = 0; // reset modifier keys
       }
@@ -237,7 +260,7 @@ void poll_keyboard() {
   }
   else if (screen_on && millis() - time_of_last_press_ms > screen_timeout_ms){
     screen_on = false;
-    digitalWrite(tft_led, LOW);
+    //digitalWrite(tft_led, LOW);
   }
 
 }
@@ -257,6 +280,18 @@ void setup_keyboard_poller() {
   }
 }
 
+static void reset_tx_display_buffer() {
+  // set up transmit display buffer. keyboard will write to this, screen will display it. 
+  memset(tx_display_buffer, '\0', TX_DISPLAY_BUFFER_SIZE);
+  tx_display_buffer_length = 0;
+}
+
+static void redraw_tx_display_window() {
+  tft.fillRect(TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y, 235, 90,  ILI9341_BLACK);
+  tft.drawRect(TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y, 235, 90,  ILI9341_RED); 
+  tft.drawString(tx_display_buffer, tx_display_buffer_length, TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y);
+}
+
 void setup_screen() {
   pinMode(tft_led, OUTPUT);
   digitalWrite(tft_led, HIGH);
@@ -265,14 +300,45 @@ void setup_screen() {
   pinMode(tft_sck, OUTPUT);
 
   tft.begin();
+  tft.setFont(Arial_16);
+  tft.setRotation(2);
+  
   tft.setCursor(0,0);
   tft.setTextWrap(true);
   tft.fillScreen(ILI9341_BLACK);
-  tft.setTextColor(ILI9341_CYAN);
-  tft.setTextSize(2);
-  tft.print("Hello, ocean!\n\n> ");
-  tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+  //tft.setTextColor(ILI9341_CYAN, ILI9341_DARKGREY);
+  //tft.setTextSize(2);
+  //tft.print("Hello, ocean!\n\n> ");
+//  tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK); // can pass optional bg arg?
 
+  //tft.drawRect(0, 0,   235, 25,  ILI9341_RED);
+  tft.drawRect(0, 25,  235, 201, ILI9341_RED);
+  tft.drawRect(0, 225, 235, 90,  ILI9341_RED);
+
+  // set cursor to starting position inside typing box
+  tft.setCursor(TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y);
+  poll_battery();
+
+  reset_tx_display_buffer();
+}
+
+inline float read_battery_voltage() {
+  // 2.0 for 1:1 voltage divider, 3.3V is max ADC voltage, and ADC is 12-bit (4096 values)
+  return 2.0 * analogRead(battery_monitor) * 3.3 / 4096;
+}
+
+void poll_battery() {
+  if (millis() - time_of_last_battery_read_ms > BATTERY_READ_PERIOD_MS) {
+    time_of_last_battery_read_ms += BATTERY_READ_PERIOD_MS;
+    float battery_volts = read_battery_voltage();
+    
+    tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK); 
+    int16_t x, y;
+    tft.getCursor(&x, &y);
+    tft.setCursor(2, 2);
+    tft.printf("battery %.2fV", battery_volts);
+    tft.setCursor(x, y);
+  }
 }
 
 void setup() {
@@ -283,22 +349,24 @@ void setup() {
 
   SPI.begin();
   Wire.begin();
-  
+  analogReadResolution(12);
+
   setup_screen();
 
   setup_receiver();
 
   setup_transmitter();
 
-  // because this bitbangs on SPI pins currently, turn it off for testing other SPI functions
-  // setup_keyboard_poller();
+  setup_keyboard_poller();
 
   Serial.println("setup() complete");
 }
 
 void loop() {
-  uint16_t val = 2048 + 128 * sin(2*3.14159*micros()/1e6 * 15e3);
+  uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3);
   
-  write_to_dac(0, val);
+//  write_to_dac(0, val);
+
+  poll_battery();
 }
 

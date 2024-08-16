@@ -105,12 +105,12 @@ v1.2 PCB changes:
  - [X] add explicit space for Qi charger coil + PCB
  - [X] pull LAT down on MCP4, or just wire it out -- cant leave it floating
  - [X] CE on 5V boost wont work! needs to be always enabled, and drive a switch
+ - [X] figure out FMARK and RD on ZIF connector for display: tested with them floating and display still works, so non-essential
 
- - [ ] add explicit space for transducer
+v1.3 pcb
+ - [X] split board into two separate parts with explicit design for overall assembly. This is for two reasons:
+    1. so that I can do single-sided assembly on both pieces, but then have some parts sticking up (keyboard) and some facing down (teensy/driver electronics)
+    2. it makes the face of the screen flush with the face of the magnetic switches.
+ - [X] fix TFT connector pin numbering (it's backwards from the connector)
+ - [X] make an attempt at a BOM
 
- - [ ] make an attempt at a BOM
-
- - [ ] figure out FMARK and RD on ZIF connector for display
-
-Tests on V1.2 before ordering v.2:
-test ouptut of boost
