@@ -61,6 +61,7 @@ const uint8_t SYM_KEY_INDEX = 40;
 
 const uint8_t BACK_KEY_INDEX = 36;
 const uint8_t DEL_KEY_INDEX = 37;
+const uint8_t RET_KEY_INDEX = 44;
 const uint8_t SEND_KEY_INDEX = 45;
 const uint8_t ESC_KEY_INDEX = 48;
 const uint8_t MENU_KEY_INDEX = 49;
@@ -157,7 +158,7 @@ void adc_buffer_full_interrupt() {
         update_goertzel(g, adc_buffer_copy[i]);
       }
     }
-    Serial.println();
+    // Serial.println();
     for (int j = 0; j < gs_len; j++) {
       goertzel_state *g = &gs[j];
       finalize_goertzel(g);
@@ -251,9 +252,7 @@ void write_to_dac(uint8_t address, uint16_t value) {
 /*
   Some stuff for tracking the characters staged to be sent as a message
 */
-#define MAX_MESSAGE_CHARS 100
-char message_char_array[MAX_MESSAGE_CHARS];
-int curr_message_length = 0;
+#define MAX_MESSAGE_CHARS 100 // TODO: enforce
 
 /*
   Reads the state of a keyboard by polling a shift register connected to the keyboard’s data and clock lines. 
@@ -297,11 +296,6 @@ void poll_keyboard() {
     } else {
       uint8_t key_index = ilog2(new_press) - 1;
 
-      char key = KEYBOARD_LAYOUT[key_index];
-      if (curr_message_length < MAX_MESSAGE_CHARS) {
-        message_char_array[curr_message_length++] = key;
-      }
-
       switch (key_index) {
         case CAP_KEY_INDEX:
           Serial.println("You pressed CAPS");
@@ -315,22 +309,24 @@ void poll_keyboard() {
           tx_display_buffer_length--;
           redraw_tx_display_window();
           break;
+        case RET_KEY_INDEX:
+          Serial.println("You pressed RETURN");
+          break;
         case SEND_KEY_INDEX:
           Serial.println("You pressed SEND");
-          Serial.printf("Current message length: %d\n", curr_message_length);
-          if (curr_message_length == 1) {
+          Serial.printf("Current message length: %d\n", tx_display_buffer_length);
+          if (tx_display_buffer_length == 0) {
             Serial.println("No message to send");
             break;
           }
           // TODO: SEND DATA
-          for (int i = 0; i < curr_message_length; i++) {
-            Serial.print(message_char_array[i]);
-            Serial.print(' ');
+          for (int i = 0; i < tx_display_buffer_length; i++) {
+            Serial.print(tx_display_buffer[i]);
+            Serial.print('|');
           }
+          Serial.println();
 
           // Clears text out
-          memset(message_char_array, '\0', sizeof(message_char_array));
-          curr_message_length = 0;
           reset_tx_display_buffer();
           redraw_tx_display_window();
           break;
