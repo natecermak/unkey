@@ -14,7 +14,8 @@
 #define TX_DISPLAY_BUFFER_X 2 // horizontal offset when user starts typing (0 is flush to left screen bound)
 #define TX_DISPLAY_BUFFER_Y 227 // vertical offset when user starts typing (0 is flush to top screen bound)
 #define TX_DISPLAY_BUFFER_SIZE 400 // max message length
-#define WRAP_LIMIT 16 // Sender message wrapping cut-off
+#define CHAT_WRAP_LIMIT 16 // Sender message wrapping cut-off
+#define SEND_WRAP_LIMIT 30 // Sender message wrapping cut-off
 
 // ------------------- PINS ----------------------------------------------- //
 const int readPin_adc_0 = 15;
@@ -329,7 +330,7 @@ void render_chat_history() {
       if (chat_history[i].text[j] == '\0') {
         break;
       }
-      if (chat_history[i].text[j] == '\n' || (j % WRAP_LIMIT == 0 && j > 0)) {
+      if (chat_history[i].text[j] == '\n' || (j % CHAT_WRAP_LIMIT == 0 && j > 0)) {
         // Moves the cursor to the next line:
         cursor_x = chat_history_x;
         chat_history_y += LINE_HEIGHT;
@@ -503,7 +504,7 @@ static void redraw_tx_display_window() {
   int cursor_x = TX_DISPLAY_BUFFER_X;
   int cursor_y = TX_DISPLAY_BUFFER_Y;
   for (int i = 0; i < tx_display_buffer_length; i++) {
-    if (tx_display_buffer[i] == '\n') {
+    if (tx_display_buffer[i] == '\n' || (i % SEND_WRAP_LIMIT == 0 && i > 0)) {
       // Move the cursor to the next line (adjust cursor_y based on text size)
       cursor_x = TX_DISPLAY_BUFFER_X;
       cursor_y += LINE_HEIGHT + 2;
