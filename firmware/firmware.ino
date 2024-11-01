@@ -6,6 +6,10 @@
 #include "goertzel.h"
 // #include "font_Arial.h"
 
+#define LINE_HEIGHT 10 // Height of each line in pixels
+#define TEXT_SIZE 1 // Text size multiplier (depends on your display)
+#define CHAR_WIDTH 6 // Width of each character in pixels
+
 // ------------------- PINS ----------------------------------------------- //
 const int readPin_adc_0 = 15;
 const int kb_load_n = 22;
@@ -88,9 +92,9 @@ const int screen_timeout_ms = 10000;                                            
 ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);  // initializes the display using pin numbers defined above, which get passed to the constructor
 
 // ------------------- Transmit message field ---------------------------- //
-#define TX_DISPLAY_BUFFER_X 2
-#define TX_DISPLAY_BUFFER_Y 227
-#define TX_DISPLAY_BUFFER_SIZE 400
+#define TX_DISPLAY_BUFFER_X 2 // horizontal offset when user starts typing (0 is flush to left screen bound)
+#define TX_DISPLAY_BUFFER_Y 227 // vertical offset when user starts typing (0 is flush to top screen bound)
+#define TX_DISPLAY_BUFFER_SIZE 400 // max message length
 char tx_display_buffer[TX_DISPLAY_BUFFER_SIZE];
 uint16_t tx_display_buffer_length;
 
@@ -249,10 +253,86 @@ void write_to_dac(uint8_t address, uint16_t value) {
   SPI.endTransaction();
 }
 
-/*
-  Some stuff for tracking the characters staged to be sent as a message
-*/
-#define MAX_MESSAGE_CHARS 100 // TODO: enforce
+struct message {
+  // message ID (might need once we need to handle incoming messages)
+  // chat ID (only necessary if one device can have multiple chats)
+  // sender device ID (" " "")
+  // recipient device ID? (" " "")
+  time_t timestamp;
+  char sender[20];
+  char recipient[20];
+  char text[TX_DISPLAY_BUFFER_SIZE];
+};
+
+#define MAX_CHAT_MESSAGES 50
+struct message chat_history[MAX_CHAT_MESSAGES];
+int chat_history_message_count = 0;
+
+void print_message(struct message msg) {
+    Serial.print("Timestamp: ");
+    Serial.println(msg.timestamp);
+    Serial.print("Sender: ");
+    Serial.println(msg.sender);
+    Serial.print("Recipient: ");
+    Serial.println(msg.recipient);
+    Serial.print("Text: ");
+    Serial.println(msg.text);
+}
+
+void print_chat_history() {
+  for (int i = 0; i < chat_history_message_count; i++) {
+    print_message(chat_history[i]);
+  }
+}
+
+void add_message_to_chat_history(const char* message_text) {
+  if (chat_history_message_count < MAX_CHAT_MESSAGES) {
+    struct message curr_message {
+      time(NULL), // current time
+      "Recipient",
+      "Me",
+      ""
+    };
+    strncpy(curr_message.text, message_text, TX_DISPLAY_BUFFER_SIZE - 1);
+    curr_message.text[TX_DISPLAY_BUFFER_SIZE - 1] = '\0';
+
+    print_message(curr_message);
+    chat_history[chat_history_message_count] = curr_message;
+    chat_history_message_count++;
+  } else {
+    Serial.println("Chat history is full");
+  }
+}
+
+void render_chat_history() {
+  print_chat_history();
+  Serial.println("render_chat_history called");
+
+  int chat_history_x = 100;
+  int chat_history_y = 30;
+
+  // for each struct in chat_history, draw the struct text only, separated with a line break
+  for (int i = 0; i < chat_history_message_count; i++) {
+    // draws at current line:
+    tft.drawString(chat_history[i].text, chat_history_x, chat_history_y);
+
+    // separates messages:
+    chat_history_x = 100;
+    chat_history_y += 2 * LINE_HEIGHT;
+  }
+
+  // TODO: Make complete history scrollable
+}
+
+void transmit_message(char message) {
+  // TODO: Encode/transmit to recipient device
+}
+
+void send_message(const char* message) {
+  // transmit_message(message);
+
+  add_message_to_chat_history(message);
+}
 
 /*
   Reads the state of a keyboard by polling a shift register connected to the keyboard’s data and clock lines. 
@@ -310,7 +390,12 @@ void poll_keyboard() {
           redraw_tx_display_window();
           break;
         case RET_KEY_INDEX:
-          Serial.println("You pressed RETURN");
+          Serial.println("You pressed RETURN!!");
+          if (tx_display_buffer_length < TX_DISPLAY_BUFFER_SIZE - 1) {
+            tx_display_buffer[tx_display_buffer_length] = '\n';
+            tx_display_buffer_length++;
+          }
+          redraw_tx_display_window();
           break;
         case SEND_KEY_INDEX:
           Serial.println("You pressed SEND");
@@ -319,24 +404,29 @@ void poll_keyboard() {
             Serial.println("No message to send");
             break;
           }
-          // TODO: SEND DATA
+          // Just prints the current content of the buffer:
           for (int i = 0; i < tx_display_buffer_length; i++) {
             Serial.print(tx_display_buffer[i]);
             Serial.print('|');
           }
           Serial.println();
 
-          // Clears text out
+          send_message(tx_display_buffer);
+
+          // Clears message staging area after it's been sent
           reset_tx_display_buffer();
           redraw_tx_display_window();
+
+          render_chat_history();
           break;
         default:
           char key = KEYBOARD_LAYOUT[key_index];
           tx_display_buffer[tx_display_buffer_length] = key;
           tx_display_buffer_length++;
           tft.drawString(tx_display_buffer, tx_display_buffer_length, TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y);
-          Serial.printf("Read buffer %ul\n", ~read_buffer);
-          Serial.printf("You pressed key_index=%d, key=\'%c\'\n", key_index, key);
+          // Serial.printf("Read buffer %ul\n", ~read_buffer);
+          // Serial.printf("You pressed key_index=%d, key=\'%c\'\n", key_index, key);
+          redraw_tx_display_window(); // TODO: So adding this call makes the line break display correctly, but seems inefficient to call redraw_tx_display_window everytime - need to spend more time figuring out how drawString works and add logic here to handle line breaks w/o redraw?
           // modifier = 0; // reset modifier keys
       }
     }
@@ -383,9 +473,24 @@ static void reset_tx_display_buffer() {
 */
 static void redraw_tx_display_window() {
   Serial.println("redraw_tx_display_window called");  // when you hit backspace
-  tft.fillRect(TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y, 235, 90, ILI9341_WHITE);
-  tft.drawRect(TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y, 235, 90, ILI9341_RED);
+  tft.fillRect(TX_DISPLAY_BUFFER_X - 1, TX_DISPLAY_BUFFER_Y - 1, 234, 90, ILI9341_WHITE); // ❓ For some reason these offsets were required to render the same boundaries in setup_screen, and I can't figure out why
+  tft.drawRect(TX_DISPLAY_BUFFER_X - 2, TX_DISPLAY_BUFFER_Y - 2, 234, 90, ILI9341_RED); // same as above
   tft.drawString(tx_display_buffer, tx_display_buffer_length, TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y);
+
+  // TODO: this is stuff to display the line breaks - might want to move out into a helper func
+  int cursor_x = TX_DISPLAY_BUFFER_X;
+  int cursor_y = TX_DISPLAY_BUFFER_Y;
+  for (int i = 0; i < tx_display_buffer_length; i++) {
+    if (tx_display_buffer[i] == '\n') {
+      // Move the cursor to the next line (adjust cursor_y based on text size)
+      cursor_x = TX_DISPLAY_BUFFER_X;  // Reset X position
+      cursor_y += LINE_HEIGHT;         // Move Y position down by one line height
+    } else {
+      // Draw the character at the current cursor position
+      tft.drawChar(cursor_x, cursor_y, tx_display_buffer[i], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+      cursor_x += (CHAR_WIDTH + 1);  // ❓ Moves cursor right for next character (again, for some reason the +1 offset is required to get the current char to match staged chars width)
+    }
+  }
 }
 
 /*
@@ -406,12 +511,12 @@ void setup_screen() {
   tft.setTextWrap(true); // ❓ not working
   tft.fillScreen(ILI9341_WHITE);
 
-  tft.setTextSize(2);
+  // tft.setTextSize(2);
   // tft.print("Hello, ocean!\n\n> ");
   // tft.setTextColor(0x07FF, 0xFD20); // currently this setting gets overwritten by poll_battery()
 
-  tft.drawRect(0, 25, 235, 201, ILI9341_RED);
-  tft.drawRect(0, 225, 235, 90, ILI9341_RED);
+  tft.drawRect(0, 25, 235, 201, ILI9341_RED); // chat history
+  tft.drawRect(0, 225, 235, 90, ILI9341_RED); // message staging area
 
   // set cursor to starting position inside typing box
   tft.setCursor(TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y);
