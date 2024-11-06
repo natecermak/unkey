@@ -7,15 +7,30 @@
 // #include "font_Arial.h"
 
 #define CHAR_WIDTH 7 // Width of each character in pixels
+#define CHAT_WRAP_LIMIT 16 // Sender message wrapping cut-off
 #define LINE_HEIGHT 10 // Height of each line in pixels
 #define MAX_CHAT_MESSAGES 50
+#define MAX_NAME_LENGTH 20
 #define SCAN_CHAIN_LENGTH 56  // 56 keys that need to be checked per polling cycle
-#define TEXT_SIZE 1 // Text size multiplier (depends on your display)
-#define TX_DISPLAY_BUFFER_X 2 // horizontal offset when user starts typing (0 is flush to left screen bound)
-#define TX_DISPLAY_BUFFER_Y 227 // vertical offset when user starts typing (0 is flush to top screen bound)
-#define TX_DISPLAY_BUFFER_SIZE 400 // max message length
-#define CHAT_WRAP_LIMIT 16 // Sender message wrapping cut-off
 #define SEND_WRAP_LIMIT 30 // Sender message wrapping cut-off
+#define TEXT_SIZE 1 // Text size multiplier (depends on your display)
+#define TYPING_BOX_X 2 // Typing box horizontal offset (0 is flush to left screen bound)
+#define TYPING_BOX_Y 227 // Typing box vertical offset (0 is flush to top screen bound)
+#define MAX_TEXT_LENGTH 400 // Unit is characters
+#define TIMESTAMP_LEFT_INDENT 60 // Timestamp horizontal offset (0 is flush to left screen bound)
+#define TYPING_BOX_LINE_PADDING 2 // Extra vertical space between lines in typing box area
+#define CHAT_HISTORY_LINE_PADDING 2 // Extra vertical space between lines in chat history box area
+
+typedef struct {
+  // message ID (might need once we need to handle incoming messages)
+  // chat ID (only necessary if one device can have multiple chats)
+  // sender device ID (" " "")
+  // recipient device ID? (" " "")
+  time_t timestamp;
+  char sender[MAX_NAME_LENGTH];
+  char recipient[MAX_NAME_LENGTH];
+  char text[MAX_TEXT_LENGTH];
+} message_t;
 
 // ------------------- PINS ----------------------------------------------- //
 const int readPin_adc_0 = 15;
@@ -97,7 +112,7 @@ const int screen_timeout_ms = 10000;                                            
 ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);  // initializes the display using pin numbers defined above, which get passed to the constructor
 
 // ------------------- Transmit message field ---------------------------- //
-char tx_display_buffer[TX_DISPLAY_BUFFER_SIZE];
+char tx_display_buffer[MAX_TEXT_LENGTH];
 uint16_t tx_display_buffer_length;
 
 // ------------------- Battery monitoring --------------------------------- //
@@ -146,11 +161,10 @@ inline void set_tx_power_enable(bool enable) {
 void adc_buffer_full_interrupt() {
   dma_ch1.clearInterrupt();
   // mempcy copies a block of memory from one location to another
-  // memcpy(destination, source, number_of_bytes_to_copy) --> expects void * arguments (void pointer)
   memcpy((void *)adc_buffer_copy, (void *)dma_adc_buff1, sizeof(dma_adc_buff1));
   if ((uint32_t)dma_adc_buff1 >= 0x20200000u)
     arm_dcache_delete((void *)dma_adc_buff1, sizeof(dma_adc_buff1));
-  dma_ch1.enable();  // Re-enable the DMA channel for next read
+  dma_ch1.enable();  // Re-enables the DMA channel for next read
 
   /* 
     Processes data:
@@ -255,49 +269,38 @@ void write_to_dac(uint8_t address, uint16_t value) {
   SPI.endTransaction();
 }
 
-struct message {
-  // message ID (might need once we need to handle incoming messages)
-  // chat ID (only necessary if one device can have multiple chats)
-  // sender device ID (" " "")
-  // recipient device ID? (" " "")
-  time_t timestamp;
-  char sender[20];
-  char recipient[20];
-  char text[TX_DISPLAY_BUFFER_SIZE];
-};
-
-struct message chat_history[MAX_CHAT_MESSAGES];
+message_t chat_history[MAX_CHAT_MESSAGES];
 int chat_history_message_count = 0;
 
-void print_message(struct message msg) {
-    Serial.print("Timestamp: ");
-    Serial.println(msg.timestamp);
-    Serial.print("Sender: ");
-    Serial.println(msg.sender);
-    Serial.print("Recipient: ");
-    Serial.println(msg.recipient);
-    Serial.print("Text: ");
-    Serial.println(msg.text);
+void _debug_print_message(message_t msg) {
+  Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned, which time_t is on teensy
+  Serial.print("Sender: ");
+  Serial.println(msg.sender);
+  Serial.print("Recipient: ");
+  Serial.println(msg.recipient);
+  Serial.print("Text: ");
+  Serial.println(msg.text);
 }
 
-void print_chat_history() {
+void _debug_print_chat_history() {
   for (int i = 0; i < chat_history_message_count; i++) {
-    print_message(chat_history[i]);
+    _debug_print_message(chat_history[i]);
   }
 }
 
 void add_message_to_chat_history(const char* message_text) {
+  // TODO: Use a ring buffer here to handle full chat history
   if (chat_history_message_count < MAX_CHAT_MESSAGES) {
-    struct message curr_message {
+    message_t curr_message {
       time(NULL), // current time
       "Recipient",
       "Me",
       ""
     };
-    strncpy(curr_message.text, message_text, TX_DISPLAY_BUFFER_SIZE - 1);
-    curr_message.text[TX_DISPLAY_BUFFER_SIZE - 1] = '\0';
+    strncpy(curr_message.text, message_text, MAX_TEXT_LENGTH - 1);
+    curr_message.text[MAX_TEXT_LENGTH - 1] = '\0';
 
-    print_message(curr_message);
+    _debug_print_message(curr_message);
     chat_history[chat_history_message_count] = curr_message;
     chat_history_message_count++;
   } else {
@@ -305,31 +308,23 @@ void add_message_to_chat_history(const char* message_text) {
   }
 }
 
-void render_chat_history() {
-  print_chat_history();
-  Serial.println("render_chat_history called");
+void display_chat_history() {
+  _debug_print_chat_history();
+  Serial.println("display_chat_history called");
 
   int chat_history_x = 120; // Note: this currently allows for 16 chars per line
   int chat_history_y = 30;
 
   for (int i = 0; i < chat_history_message_count; i++) {
-    // Stuff to format timestamp into a sensical string:
-    struct tm *timeinfo = localtime(&chat_history[i].timestamp);
-    char time_str[8];  // Buffer for "12:34am" (7 chars + '\0')
-    strftime(time_str, sizeof(time_str), "%I:%M%p", timeinfo);
+    struct tm *timeinfo = localtime(&chat_history[i].timestamp); // Converts Unix timestamp to local time format
+    char time_as_str[8];  // Buffer for "00:00am" format (7 chars + '\0') to hold final string that will get displayed
+    strftime(time_as_str, sizeof(time_as_str), "%I:%M%p", timeinfo); // Puts time in a 00:00PM (or AM) format
 
-    // Draws timestamp at current line:
-    tft.drawString(time_str, 60, chat_history_y);
+    tft.drawString(time_as_str, TIMESTAMP_LEFT_INDENT, chat_history_y); // Draws timestamp at current line
+    int cursor_x = chat_history_x; // Draws message content, accounting for line breaks
 
-    // Draws message content, accounting for line breaks
-    int cursor_x = chat_history_x;
-
-    // TODO: Maybe a little hacky, using j in lieu of just getting the text message length?
-    for (int j = 0; j < TX_DISPLAY_BUFFER_SIZE; j++) {
-      // Since we don't know the length of the message:
-      if (chat_history[i].text[j] == '\0') {
-        break;
-      }
+    int text_length = strnlen(chat_history[i].text, MAX_TEXT_LENGTH);
+    for (int j = 0; j < text_length; j++) {
       if (chat_history[i].text[j] == '\n' || (j % CHAT_WRAP_LIMIT == 0 && j > 0)) {
         // Moves the cursor to the next line:
         cursor_x = chat_history_x;
@@ -341,21 +336,20 @@ void render_chat_history() {
       }
     }
 
-    // Separates messages:
-    chat_history_y += LINE_HEIGHT + 6;
+    chat_history_y += LINE_HEIGHT + CHAT_HISTORY_LINE_PADDING; // Separates messages
   }
 
   // TODO: Make complete history scrollable
 }
 
-void transmit_message(char message) {
+void transmit_message() {
   // TODO: Encode/transmit to recipient device
 }
 
-void send_message(const char* message) {
-  // transmit_message(message);
+void send_message(const char* message_text) {
+  // transmit_message(message_text);
 
-  add_message_to_chat_history(message);
+  add_message_to_chat_history(message_text);
 }
 
 /*
@@ -414,8 +408,8 @@ void poll_keyboard() {
           redraw_tx_display_window();
           break;
         case RET_KEY_INDEX:
-          Serial.println("You pressed RETURN!!");
-          if (tx_display_buffer_length < TX_DISPLAY_BUFFER_SIZE - 1) {
+          Serial.println("You pressed RETURN");
+          if (tx_display_buffer_length < MAX_TEXT_LENGTH - 1) {
             tx_display_buffer[tx_display_buffer_length] = '\n';
             tx_display_buffer_length++;
           }
@@ -429,11 +423,11 @@ void poll_keyboard() {
             break;
           }
           // Just prints the current content of the buffer:
-          for (int i = 0; i < tx_display_buffer_length; i++) {
-            Serial.print(tx_display_buffer[i]);
-            Serial.print('|');
-          }
-          Serial.println();
+          // for (int i = 0; i < tx_display_buffer_length; i++) {
+          //   Serial.print(tx_display_buffer[i]);
+          //   Serial.print('|');
+          // }
+          // Serial.println();
 
           send_message(tx_display_buffer);
 
@@ -441,13 +435,12 @@ void poll_keyboard() {
           reset_tx_display_buffer();
           redraw_tx_display_window();
 
-          render_chat_history();
+          display_chat_history();
           break;
         default:
           char key = KEYBOARD_LAYOUT[key_index];
           tx_display_buffer[tx_display_buffer_length] = key;
           tx_display_buffer_length++;
-          // tft.drawString(tx_display_buffer, tx_display_buffer_length, TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y);
           // Serial.printf("Read buffer %ul\n", ~read_buffer);
           // Serial.printf("You pressed key_index=%d, key=\'%c\'\n", key_index, key);
           redraw_tx_display_window(); // TODO: So adding this call makes the line break display correctly, but seems inefficient to call redraw_tx_display_window everytime - need to spend more time figuring out how drawString works and add logic here to handle line breaks w/o redraw?
@@ -486,7 +479,7 @@ void setup_keyboard_poller() {
 */
 static void reset_tx_display_buffer() {
   // set up transmit display buffer. keyboard will write to this, screen will display it.
-  memset(tx_display_buffer, '\0', TX_DISPLAY_BUFFER_SIZE); // fill buffer with null chars ('\0')
+  memset(tx_display_buffer, '\0', MAX_TEXT_LENGTH); // fill buffer with null chars ('\0')
   tx_display_buffer_length = 0;
 }
 
@@ -497,17 +490,17 @@ static void reset_tx_display_buffer() {
 */
 static void redraw_tx_display_window() {
   Serial.println("redraw_tx_display_window called");
-  tft.fillRect(TX_DISPLAY_BUFFER_X - 1, TX_DISPLAY_BUFFER_Y - 1, 234, 90, ILI9341_WHITE); // ❓ For some reason these offsets were required to render the same boundaries in setup_screen, and I can't figure out why
-  tft.drawRect(TX_DISPLAY_BUFFER_X - 2, TX_DISPLAY_BUFFER_Y - 2, 234, 90, ILI9341_RED); // same as above
+  tft.fillRect(TYPING_BOX_X - 1, TYPING_BOX_Y - 1, 234, 90, ILI9341_WHITE); // ❓ For some reason these offsets were required to render the same boundaries in setup_screen, and I can't figure out why
+  tft.drawRect(TYPING_BOX_X - 2, TYPING_BOX_Y - 2, 234, 90, ILI9341_RED); // same as above
 
   // TODO: this is stuff to display the line breaks - might want to move out into a helper func
-  int cursor_x = TX_DISPLAY_BUFFER_X;
-  int cursor_y = TX_DISPLAY_BUFFER_Y;
+  int cursor_x = TYPING_BOX_X;
+  int cursor_y = TYPING_BOX_Y;
   for (int i = 0; i < tx_display_buffer_length; i++) {
     if (tx_display_buffer[i] == '\n' || (i % SEND_WRAP_LIMIT == 0 && i > 0)) {
       // Move the cursor to the next line (adjust cursor_y based on text size)
-      cursor_x = TX_DISPLAY_BUFFER_X;
-      cursor_y += LINE_HEIGHT + 2;
+      cursor_x = TYPING_BOX_X;
+      cursor_y += LINE_HEIGHT + TYPING_BOX_LINE_PADDING;
     } else {
       // Draw the character at the current cursor position
       tft.drawChar(cursor_x, cursor_y, tx_display_buffer[i], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
@@ -519,6 +512,13 @@ static void redraw_tx_display_window() {
 /*
   Initializes the TFT screen, sets the screen orientation, clears the screen, and draws some basic UI elements
 */
+
+int scroll_y_offset = 0;  // Current scroll offset
+const int line_height = 16;  // Height of each line of text
+int total_message_height = 0; // Tracks the height of all messages
+int scroll_area_start = 25;
+int scroll_area_height = 201;
+
 void setup_screen() {
   pinMode(tft_led, OUTPUT);
   digitalWrite(tft_led, HIGH); // actual thing that turns screen light on
@@ -527,23 +527,17 @@ void setup_screen() {
   pinMode(tft_sck, OUTPUT); // sck is clock
 
   tft.begin();
-  // tft.setFont(Arial_16);
+
   tft.setRotation(2);
-
-  tft.setCursor(0, 0);
-  // tft.setTextWrap(true); // ❓ not working
+  // tft.setCursor(0, 0); // working without, can prolly delete
   tft.fillScreen(ILI9341_WHITE);
+  tft.drawRect(0, 25, 235, 201, ILI9341_RED); // chat history boundaries
+  tft.drawRect(0, 225, 235, 90, ILI9341_RED); // typing box boundaries
 
-  // tft.setTextSize(2);
-  // tft.print("Hello, ocean!\n\n> ");
-  // tft.setTextColor(0x07FF, 0xFD20); // currently this setting gets overwritten by poll_battery()
-
-  tft.drawRect(0, 25, 235, 201, ILI9341_RED); // chat history
-  tft.drawRect(0, 225, 235, 90, ILI9341_RED); // message staging area
+  tft.setScrollTextArea(0, 25, 235, 201);
 
   // set cursor to starting position inside typing box
-  tft.setCursor(TX_DISPLAY_BUFFER_X, TX_DISPLAY_BUFFER_Y);
-  // poll_battery();  // was working without (already happening in loop)
+  tft.setCursor(TYPING_BOX_X, TYPING_BOX_Y);
 
   reset_tx_display_buffer();
 }
