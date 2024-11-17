@@ -126,11 +126,11 @@ ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_
 char tx_display_buffer[MAX_TEXT_LENGTH];
 uint16_t tx_display_buffer_length;
 
-// ------------------- Battery monitoring --------------------------------- //
+// ------------------- Battery monitoring -------------------------------- //
 long time_of_last_battery_read_ms;
 const long BATTERY_READ_PERIOD_MS = 1000;
 
-// ------------------- Utility functions ---------------------------------- //
+// ------------------- DSP Utility functions ----------------------------- //
 /*
  Calculates the integer base 2 logarithm of x to give the position of the highest set bit
  Usage: Gets called by poll_keyboard to detect key presses (?)
@@ -280,9 +280,15 @@ void write_to_dac(uint8_t address, uint16_t value) {
   SPI.endTransaction();
 }
 
+// ------------------- Screen Behavior Vars/Constants -------------------- //
+
 message_t chat_history[MAX_CHAT_MESSAGES];
 int chat_history_message_count = 0;
 int scroll_position = 0; // Tracks most recent message i.e. at bottom of history box
+int message_buffer_head = 0; // Head pointer (next position to write)
+// Note: No tail pointer needed unless we want to delete messages
+
+// ------------------- Screen Behavior Utility Functions ----------------- //
 
 void _debug_print_message(message_t msg) {
   Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned, which time_t is on teensy
@@ -300,13 +306,8 @@ void _debug_print_chat_history() {
   }
 }
 
-// Ring buffer -> use chat_history
-int head = 0;             // Head pointer (next position to write)
-// Note: No tail pointer needed unless we want to delete messages
-// count --> chat_history_message_count
-
 void display_chat_history() {
-  int index = (head - 1 - scroll_position + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES; // last sent message stored at slot before head
+  int message_buffer_index = (message_buffer_head - 1 - scroll_position + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES; // last sent message stored at slot before message_buffer_head
   int curr_message_pos = CHAT_HISTORY_Y + CHAT_HISTORY_H - LINE_HEIGHT - CHAT_HISTORY_BOTTOM_PADDING;
 
   // Clear chat box area
@@ -315,15 +316,15 @@ void display_chat_history() {
 
   for (int i = 0; i < MAX_VISIBLE_MESSAGES && i < chat_history_message_count && curr_message_pos >= CHAT_HISTORY_Y; i++) {
     // Stuff to get timestamp:
-    struct tm *timeinfo = localtime(&chat_history[index].timestamp); // Converts Unix timestamp to local time format
+    struct tm *timeinfo = localtime(&chat_history[message_buffer_index].timestamp); // Converts Unix timestamp to local time format
     char time_as_str[8];  // Buffer for "00:00am" format (7 chars + '\0') to hold final string that will get displayed
     strftime(time_as_str, sizeof(time_as_str), "%I:%M%p", timeinfo); // Puts time in a 00:00PM (or AM) format
 
     // Stuff to calculate the number of lines the message will occupy:
     int line_count = 1;
-    int text_length = strnlen(chat_history[index].text, MAX_TEXT_LENGTH);
+    int text_length = strnlen(chat_history[message_buffer_index].text, MAX_TEXT_LENGTH);
     for (int j = 0; j < text_length; j++) {
-      if (chat_history[index].text[j] == '\n' || (j % CHAT_WRAP_LIMIT == 0 && j > 0)) {
+      if (chat_history[message_buffer_index].text[j] == '\n' || (j % CHAT_WRAP_LIMIT == 0 && j > 0)) {
         line_count++;
       }
     }
@@ -338,13 +339,13 @@ void display_chat_history() {
     int draw_start_x = SENT_MESSAGE_X;
     int draw_start_y = top_line_y;
     for (int k = 0; k < text_length; k++) {
-      if (chat_history[index].text[k] == '\n' || (k % CHAT_WRAP_LIMIT == 0 && k > 0)) {
+      if (chat_history[message_buffer_index].text[k] == '\n' || (k % CHAT_WRAP_LIMIT == 0 && k > 0)) {
         // Creates a new line:
         draw_start_x = SENT_MESSAGE_X;
         draw_start_y += LINE_HEIGHT;
       } else {
         // Continues on same line:
-        tft.drawChar(draw_start_x, draw_start_y, chat_history[index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+        tft.drawChar(draw_start_x, draw_start_y, chat_history[message_buffer_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
         draw_start_x += CHAR_WIDTH;
       }
     }
@@ -354,7 +355,7 @@ void display_chat_history() {
     tft.fillRect(80, 0, CHAT_HISTORY_W - 80, CHAT_HISTORY_Y, ILI9341_WHITE); // next to battery display
 
     curr_message_pos -= (box_height + CHAT_HISTORY_LINE_PADDING); // Separates messages
-    index = (index - 1 + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES; // Gets next most recent message from ring buffer
+    message_buffer_index = (message_buffer_index - 1 + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES; // Gets next most recent message from ring buffer
   }
 }
 
@@ -371,8 +372,8 @@ void add_message_to_chat_history(const char* message_text) {
   curr_message.text[MAX_TEXT_LENGTH - 1] = '\0';
 
   // Ring buffer logic to overwrite oldest message when buffer is exceeded:
-  chat_history[head] = curr_message;
-  head = (head + 1) % MAX_CHAT_MESSAGES;
+  chat_history[message_buffer_head] = curr_message;
+  message_buffer_head = (message_buffer_head + 1) % MAX_CHAT_MESSAGES;
   if (chat_history_message_count < MAX_CHAT_MESSAGES) {
     chat_history_message_count++;
   }
