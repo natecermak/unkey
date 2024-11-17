@@ -18,6 +18,7 @@
 #define MAX_CHAT_MESSAGES 50
 #define MAX_NAME_LENGTH 20
 #define MAX_TEXT_LENGTH 400 // Unit is characters
+#define MAX_VISIBLE_MESSAGES 9 // Max number of single line texts visible given current line height, padding, etc
 #define SCAN_CHAIN_LENGTH 56  // 56 keys that need to be checked per polling cycle
 #define SENT_MESSAGE_X 120 // Sent message horizontal offset. Note: 120 currently allows for 16 chars per line
 #define SEND_WRAP_LIMIT 30 // Sender message wrapping cut-off
@@ -281,6 +282,7 @@ void write_to_dac(uint8_t address, uint16_t value) {
 
 message_t chat_history[MAX_CHAT_MESSAGES];
 int chat_history_message_count = 0;
+int scroll_position = 0; // Tracks most recent message i.e. at bottom of history box
 
 void _debug_print_message(message_t msg) {
   Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned, which time_t is on teensy
@@ -304,15 +306,14 @@ int head = 0;             // Head pointer (next position to write)
 // count --> chat_history_message_count
 
 void display_chat_history() {
-  int index = (head - 1 + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES; // last sent message stored at slot before head
-
+  int index = (head - 1 - scroll_position + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES; // last sent message stored at slot before head
   int curr_message_pos = CHAT_HISTORY_Y + CHAT_HISTORY_H - LINE_HEIGHT - CHAT_HISTORY_BOTTOM_PADDING;
 
   // Clear chat box area
   tft.fillRect(CHAT_HISTORY_X, 10, CHAT_HISTORY_W, CHAT_HISTORY_H + 10, ILI9341_WHITE);
   tft.drawRect(CHAT_HISTORY_X, CHAT_HISTORY_Y, CHAT_HISTORY_W, CHAT_HISTORY_H, ILI9341_RED);
 
-  for (int i = 0; i < chat_history_message_count && curr_message_pos >= CHAT_HISTORY_Y; i++) {
+  for (int i = 0; i < MAX_VISIBLE_MESSAGES && i < chat_history_message_count && curr_message_pos >= CHAT_HISTORY_Y; i++) {
     // Stuff to get timestamp:
     struct tm *timeinfo = localtime(&chat_history[index].timestamp); // Converts Unix timestamp to local time format
     char time_as_str[8];  // Buffer for "00:00am" format (7 chars + '\0') to hold final string that will get displayed
@@ -326,24 +327,24 @@ void display_chat_history() {
         line_count++;
       }
     }
-
-    // Stuff to draw box and timestamp:
     int box_height = line_count * LINE_HEIGHT;
     int top_line_y = curr_message_pos - box_height + LINE_HEIGHT;
+
+    // Stuff to draw box and timestamp:
     tft.drawString(time_as_str, TIMESTAMP_LEFT_INDENT, curr_message_pos - (box_height - LINE_HEIGHT)); // Draws timestamp at current line
     tft.drawRect(SENT_MESSAGE_X - 8, curr_message_pos - box_height + 6, CHAT_WRAP_LIMIT * CHAR_WIDTH + 10, box_height + 5, ILI9341_LIGHTGREY);
 
     // Stuff to draw text chars:
     int draw_start_x = SENT_MESSAGE_X;
     int draw_start_y = top_line_y;
-    for (int j = 0; j < text_length; j++) {
-      if (chat_history[index].text[j] == '\n' || (j % CHAT_WRAP_LIMIT == 0 && j > 0)) {
+    for (int k = 0; k < text_length; k++) {
+      if (chat_history[index].text[k] == '\n' || (k % CHAT_WRAP_LIMIT == 0 && k > 0)) {
         // Creates a new line:
         draw_start_x = SENT_MESSAGE_X;
         draw_start_y += LINE_HEIGHT;
       } else {
         // Continues on same line:
-        tft.drawChar(draw_start_x, draw_start_y, chat_history[index].text[j], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+        tft.drawChar(draw_start_x, draw_start_y, chat_history[index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
         draw_start_x += CHAR_WIDTH;
       }
     }
@@ -353,7 +354,6 @@ void display_chat_history() {
     tft.fillRect(80, 0, CHAT_HISTORY_W - 80, CHAT_HISTORY_Y, ILI9341_WHITE); // next to battery display
 
     curr_message_pos -= (box_height + CHAT_HISTORY_LINE_PADDING); // Separates messages
-
     index = (index - 1 + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES; // Gets next most recent message from ring buffer
   }
 }
@@ -439,6 +439,20 @@ void poll_keyboard() {
           break;
         case SYM_KEY_INDEX:
           Serial.println("You pressed SYM");
+          break;
+        case UP_KEY_INDEX:
+          Serial.println("You pressed UP");
+          if (scroll_position < chat_history_message_count - MAX_VISIBLE_MESSAGES) {
+            scroll_position++;
+            display_chat_history();
+          }
+          break;
+        case DOWN_KEY_INDEX:
+          Serial.println("You pressed DOWN");
+          if (scroll_position > 0) {
+            scroll_position--;
+            display_chat_history();
+          }
           break;
         case BACK_KEY_INDEX:
           Serial.println("You pressed BACKSPACE");
