@@ -19,8 +19,9 @@
 #define MAX_NAME_LENGTH 20
 #define MAX_TEXT_LENGTH 400 // Unit is characters
 #define MAX_VISIBLE_MESSAGES 9 // Max number of single line texts visible given current line height, padding, etc
+#define RECEIVED_MESSAGE_X 70 // Received message horizontal offset
 #define SCAN_CHAIN_LENGTH 56  // 56 keys that need to be checked per polling cycle
-#define SENT_MESSAGE_X 120 // Sent message horizontal offset. Note: 120 currently allows for 16 chars per line
+#define SENT_MESSAGE_X 120 // Sent message horizontal offset
 #define SEND_WRAP_LIMIT 30 // Sender message wrapping cut-off
 #define TEXT_SIZE 1 // Text size multiplier (depends on your display)
 #define TIMESTAMP_LEFT_INDENT 60 // Timestamp horizontal offset (0 is flush to left screen bound)
@@ -167,12 +168,12 @@ inline void set_tx_power_enable(bool enable) {
 /*
   Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters
   and prints frequency domain data
+  Analog signals (voltages) --> digital values that can be processed by da Teensy
   Usage: Attached to a DMA interrupt in setup_receiver and called automatically when the buffer fills up.
 */
 void adc_buffer_full_interrupt() {
   dma_ch1.clearInterrupt();
-  // mempcy copies a block of memory from one location to another
-  memcpy((void *)adc_buffer_copy, (void *)dma_adc_buff1, sizeof(dma_adc_buff1));
+  memcpy((void *)adc_buffer_copy, (void *)dma_adc_buff1, sizeof(dma_adc_buff1)); // mempcy copies a block of memory from one location to another
   if ((uint32_t)dma_adc_buff1 >= 0x20200000u)
     arm_dcache_delete((void *)dma_adc_buff1, sizeof(dma_adc_buff1));
   dma_ch1.enable();  // Re-enables the DMA channel for next read
@@ -189,7 +190,6 @@ void adc_buffer_full_interrupt() {
         update_goertzel(g, adc_buffer_copy[i]);
       }
     }
-    // Serial.println();
     for (int j = 0; j < gs_len; j++) {
       goertzel_state *g = &gs[j];
       finalize_goertzel(g);
@@ -244,7 +244,7 @@ void setup_receiver() {
 
 /*
   Sets up the transmitter by configuring output pins, enabling transmission power, and 
-  writing initial values to a DAC (Digital-to-Analog Converter). It configures gain and voltage references for the DAC.
+  writing initial values to a DAC (Digital-to-Analog Converter). Configures gain and voltage references for the DAC.
 */
 void setup_transmitter() {
   pinMode(tx_power_en, OUTPUT); // tx is transmit, rx is receive 
@@ -287,6 +287,9 @@ int chat_history_message_count = 0;
 int scroll_position = 0; // Tracks most recent message i.e. at bottom of history box
 int message_buffer_head = 0; // Head pointer (next position to write)
 // Note: No tail pointer needed unless we want to delete messages
+IntervalTimer test_incoming_message;
+int incoming_mess_count = 0;
+const int max_incoming = 4;
 
 // ------------------- Screen Behavior Utility Functions ----------------- //
 
@@ -311,7 +314,7 @@ void display_chat_history() {
   int curr_message_pos = CHAT_HISTORY_Y + CHAT_HISTORY_H - LINE_HEIGHT - CHAT_HISTORY_BOTTOM_PADDING;
 
   // Clear chat box area
-  tft.fillRect(CHAT_HISTORY_X, 10, CHAT_HISTORY_W, CHAT_HISTORY_H + 10, ILI9341_WHITE);
+  tft.fillRect(CHAT_HISTORY_X, 10, CHAT_HISTORY_W, CHAT_HISTORY_H + 13, ILI9341_WHITE);
   tft.drawRect(CHAT_HISTORY_X, CHAT_HISTORY_Y, CHAT_HISTORY_W, CHAT_HISTORY_H, ILI9341_RED);
 
   for (int i = 0; i < MAX_VISIBLE_MESSAGES && i < chat_history_message_count && curr_message_pos >= CHAT_HISTORY_Y; i++) {
@@ -331,22 +334,53 @@ void display_chat_history() {
     int box_height = line_count * LINE_HEIGHT;
     int top_line_y = curr_message_pos - box_height + LINE_HEIGHT;
 
-    // Stuff to draw box and timestamp:
-    tft.drawString(time_as_str, TIMESTAMP_LEFT_INDENT, curr_message_pos - (box_height - LINE_HEIGHT)); // Draws timestamp at current line
-    tft.drawRect(SENT_MESSAGE_X - 8, curr_message_pos - box_height + 6, CHAT_WRAP_LIMIT * CHAR_WIDTH + 10, box_height + 5, ILI9341_LIGHTGREY);
+    // Stuff to draw message box and timestamp for incoming messages:
+    if (strcmp(chat_history[message_buffer_index].recipient, "unkey") == 0) {
+      tft.drawString(time_as_str, TIMESTAMP_LEFT_INDENT - 50, curr_message_pos - (box_height - LINE_HEIGHT)); // Draws timestamp at current line
+      // tft.drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+      tft.drawRect(RECEIVED_MESSAGE_X - 8, curr_message_pos - box_height + 6, CHAT_WRAP_LIMIT * CHAR_WIDTH + 20, box_height + 5, ILI9341_BLUE);
+    // ...and outgoing messages:
+    } else {
+      tft.drawString(time_as_str, TIMESTAMP_LEFT_INDENT, curr_message_pos - (box_height - LINE_HEIGHT)); // Draws timestamp at current line
+      tft.drawRect(SENT_MESSAGE_X - 8, curr_message_pos - box_height + 6, CHAT_WRAP_LIMIT * CHAR_WIDTH + 10, box_height + 5, ILI9341_LIGHTGREY);
+    }
 
-    // Stuff to draw text chars:
-    int draw_start_x = SENT_MESSAGE_X;
-    int draw_start_y = top_line_y;
-    for (int k = 0; k < text_length; k++) {
-      if (chat_history[message_buffer_index].text[k] == '\n' || (k % CHAT_WRAP_LIMIT == 0 && k > 0)) {
-        // Creates a new line:
-        draw_start_x = SENT_MESSAGE_X;
-        draw_start_y += LINE_HEIGHT;
-      } else {
-        // Continues on same line:
-        tft.drawChar(draw_start_x, draw_start_y, chat_history[message_buffer_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
-        draw_start_x += CHAR_WIDTH;
+    // Stuff to draw text chars for incoming messages:
+    if (strcmp(chat_history[message_buffer_index].recipient, "unkey") == 0) {
+      int draw_start_x = RECEIVED_MESSAGE_X;
+      int draw_start_y = top_line_y;
+      for (int k = 0; k < text_length; k++) {
+        if (chat_history[message_buffer_index].text[k] == '\n') {
+          // Creates a new line:
+          draw_start_x = RECEIVED_MESSAGE_X;
+          draw_start_y += LINE_HEIGHT;
+        } else if (k % CHAT_WRAP_LIMIT == 0 && k > 0) {
+          // Draws curr char on same line, then adds a new line:
+          tft.drawChar(draw_start_x, draw_start_y, chat_history[message_buffer_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          draw_start_x = RECEIVED_MESSAGE_X;
+          draw_start_y += LINE_HEIGHT;
+        } else {
+          // Continues on same line:
+          tft.drawChar(draw_start_x, draw_start_y, chat_history[message_buffer_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          draw_start_x += CHAR_WIDTH;
+        }
+      }
+    // ...and outgoing messages:
+    } else {
+      int draw_start_x = SENT_MESSAGE_X;
+      int draw_start_y = top_line_y;
+      for (int k = 0; k < text_length; k++) {
+        if (chat_history[message_buffer_index].text[k] == '\n') {
+          draw_start_x = SENT_MESSAGE_X;
+          draw_start_y += LINE_HEIGHT;
+        } else if (k % CHAT_WRAP_LIMIT == 0 && k > 0) {
+          tft.drawChar(draw_start_x, draw_start_y, chat_history[message_buffer_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          draw_start_x = SENT_MESSAGE_X;
+          draw_start_y += LINE_HEIGHT;
+        } else {
+          tft.drawChar(draw_start_x, draw_start_y, chat_history[message_buffer_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          draw_start_x += CHAR_WIDTH;
+        }
       }
     }
 
@@ -359,17 +393,21 @@ void display_chat_history() {
   }
 }
 
-void add_message_to_chat_history(const char* message_text) {
+void add_message_to_chat_history(const char* message_text, const char* sender, const char* recipient) {
   message_t curr_message {
     time(NULL), // current time
-    "Recipient",
-    "Me",
+    sender,
+    recipient,
     ""
   };
 
   // Have to copy into curr_message like this bc message_text won't be available in mem
   strncpy(curr_message.text, message_text, MAX_TEXT_LENGTH - 1);
+  strncpy(curr_message.sender, sender, MAX_NAME_LENGTH - 1);
+  strncpy(curr_message.recipient, recipient, MAX_NAME_LENGTH - 1);
   curr_message.text[MAX_TEXT_LENGTH - 1] = '\0';
+  curr_message.sender[MAX_NAME_LENGTH - 1] = '\0';
+  curr_message.recipient[MAX_NAME_LENGTH - 1] = '\0';
 
   // Ring buffer logic to overwrite oldest message when buffer is exceeded:
   chat_history[message_buffer_head] = curr_message;
@@ -387,7 +425,7 @@ void transmit_message() {
 void send_message(const char* message_text) {
   // transmit_message(message_text);
 
-  add_message_to_chat_history(message_text);
+  add_message_to_chat_history(message_text, "unkey", "the void");
 
   display_chat_history();
 }
@@ -551,8 +589,12 @@ static void redraw_tx_display_window() {
   int draw_start_x = TYPING_CURSOR_X;
   int draw_start_y = TYPING_CURSOR_Y;
   for (int i = 0; i < tx_display_buffer_length; i++) {
-    if (tx_display_buffer[i] == '\n' || (i % SEND_WRAP_LIMIT == 0 && i > 0)) {
+    if (tx_display_buffer[i] == '\n') {
       // Move the cursor to the next line (adjust draw_start_y based on text size)
+      draw_start_x = TYPING_CURSOR_X;
+      draw_start_y += LINE_HEIGHT + TYPING_BOX_LINE_PADDING;
+    } else if (i % SEND_WRAP_LIMIT == 0 && i > 0) {
+      tft.drawChar(draw_start_x, draw_start_y, tx_display_buffer[i], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
       draw_start_x = TYPING_CURSOR_X;
       draw_start_y += LINE_HEIGHT + TYPING_BOX_LINE_PADDING;
     } else {
@@ -609,6 +651,16 @@ void poll_battery() {
   }
 }
 
+void incoming_message_callback() {
+  const char *test_message_text = "Incoming from The Void";
+  add_message_to_chat_history(test_message_text, "the void", "unkey");
+  display_chat_history();
+  incoming_mess_count++;
+  if (incoming_mess_count >= max_incoming) {
+    test_incoming_message.end();
+  }
+}
+
 /*
   The main/top-level setup function that initializes the serial communication, SPI, and I2C; 
   calls other setup functions to configure the screen, receiver, transmitter, and keyboard poller.
@@ -623,6 +675,8 @@ void setup() {
   SPI.begin();               // SPI commuincation bus for keyboard/display etc
   Wire.begin();              // I2C communication bus for charge amplifier
   analogReadResolution(12);  // specifies 12-bit resolution
+
+  test_incoming_message.begin(incoming_message_callback, 10000000);
 
   setup_screen();
 
