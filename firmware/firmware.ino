@@ -361,9 +361,16 @@ void display_chat_history() {
     // Stuff to calculate the number of lines this message will occupy:
     int line_count = 1;
     int text_length = strnlen(chat_history[curr_message_index].text, MAX_TEXT_LENGTH);
+    int chars_in_current_line = 0;
     for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
-      if (chat_history[curr_message_index].text[curr_char_index] == '\n' || (curr_char_index % CHAT_WRAP_LIMIT == 0 && curr_char_index > 0)) {
+      if (chat_history[curr_message_index].text[curr_char_index] == '\n') {
         line_count++;
+        chars_in_current_line = 0;
+      } else if (chars_in_current_line >= CHAT_WRAP_LIMIT) {
+        line_count++;
+        chars_in_current_line = 1;
+      } else {
+        chars_in_current_line++;
       }
     }
     int box_height = line_count * LINE_HEIGHT;
@@ -384,40 +391,49 @@ void display_chat_history() {
     Serial.println(chat_history[curr_message_index].text);
 
     // Stuff to draw text chars for incoming messages:
+    int draw_start_y = top_line_y;
     if (strcmp(chat_history[curr_message_index].recipient, "unkey") == 0) {
       int draw_start_x = RECEIVED_MESSAGE_X;
-      int draw_start_y = top_line_y;
-      for (int k = 0; k < text_length; k++) {
-        if (chat_history[curr_message_index].text[k] == '\n') {
+      chars_in_current_line = 0;
+      for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
+        if (chat_history[curr_message_index].text[curr_char_index] == '\n') {
           // Creates a new line:
           draw_start_x = RECEIVED_MESSAGE_X;
           draw_start_y += LINE_HEIGHT;
-        } else if (k % CHAT_WRAP_LIMIT == 0 && k > 0) {
+          chars_in_current_line = 0;
+        } else if (chars_in_current_line >= CHAT_WRAP_LIMIT) {
           // Draws curr char on same line, then adds a new line:
-          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
           draw_start_x = RECEIVED_MESSAGE_X;
           draw_start_y += LINE_HEIGHT;
+          chars_in_current_line = 1;
+          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          draw_start_x += CHAR_WIDTH;
         } else {
           // Continues on same line:
-          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
           draw_start_x += CHAR_WIDTH;
+          chars_in_current_line++;
         }
       }
     // ...and outgoing messages:
     } else {
       int draw_start_x = SENT_MESSAGE_X;
-      int draw_start_y = top_line_y;
-      for (int k = 0; k < text_length; k++) {
-        if (chat_history[curr_message_index].text[k] == '\n') {
+      chars_in_current_line = 0;
+      for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
+        if (chat_history[curr_message_index].text[curr_char_index] == '\n') {
           draw_start_x = SENT_MESSAGE_X;
           draw_start_y += LINE_HEIGHT;
-        } else if (k % CHAT_WRAP_LIMIT == 0 && k > 0) {
-          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          chars_in_current_line = 0;
+        } else if (chars_in_current_line >= CHAT_WRAP_LIMIT) {
           draw_start_x = SENT_MESSAGE_X;
           draw_start_y += LINE_HEIGHT;
-        } else {
-          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[k], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          chars_in_current_line = 1;
+          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
           draw_start_x += CHAR_WIDTH;
+        } else {
+          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          draw_start_x += CHAR_WIDTH;
+          chars_in_current_line++;
         }
       }
     }
@@ -527,8 +543,6 @@ void poll_keyboard() {
           if (message_scroll_offset == chat_history_message_count - 1), that means the oldest message is
           currently displayed at the bottom of the history box
           */
-          Serial.printf("message_scroll_offset: %d\n", message_scroll_offset);
-          Serial.printf("chat_history_message_count: %d\n", chat_history_message_count);
           if (message_scroll_offset < chat_history_message_count - 1) {
             message_scroll_offset++;
             Serial.printf("✅ Scroll successful");
@@ -643,19 +657,24 @@ static void redraw_tx_display_window() {
   // TODO: this is stuff to display the line breaks - might want to move out into a helper func
   int draw_start_x = TYPING_CURSOR_X;
   int draw_start_y = TYPING_CURSOR_Y;
-  for (int i = 0; i < tx_display_buffer_length; i++) {
-    if (tx_display_buffer[i] == '\n') {
+  int chars_in_current_line = 0;
+  for (int curr_char_index = 0; curr_char_index < tx_display_buffer_length; curr_char_index++) {
+    if (tx_display_buffer[curr_char_index] == '\n') {
       // Move the cursor to the next line (adjust draw_start_y based on text size)
       draw_start_x = TYPING_CURSOR_X;
       draw_start_y += LINE_HEIGHT + TYPING_BOX_LINE_PADDING;
-    } else if (i % SEND_WRAP_LIMIT == 0 && i > 0) {
-      tft.drawChar(draw_start_x, draw_start_y, tx_display_buffer[i], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+      chars_in_current_line = 0;
+    } else if (curr_char_index >= SEND_WRAP_LIMIT) {
       draw_start_x = TYPING_CURSOR_X;
       draw_start_y += LINE_HEIGHT + TYPING_BOX_LINE_PADDING;
+      chars_in_current_line = 1;
+      tft.drawChar(draw_start_x, draw_start_y, tx_display_buffer[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+      draw_start_x += CHAR_WIDTH;
     } else {
       // Draw the character at the current cursor position
-      tft.drawChar(draw_start_x, draw_start_y, tx_display_buffer[i], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+      tft.drawChar(draw_start_x, draw_start_y, tx_display_buffer[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
       draw_start_x += CHAR_WIDTH;
+      chars_in_current_line++;
     }
   }
 }
