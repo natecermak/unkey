@@ -44,8 +44,8 @@
 #define RECIPIENT_UNKEY "unkey"
 #define RECIPIENT_VOID "the void"
 #define TEST_MESSAGE_TEXT "Incoming from The Void"
+#define TESTING_MESSAGE_COUNT_LIMIT 4
 
-// ------------------- TYPES ----------------------------------------------- //
 typedef struct {
   // message ID (might need once we need to handle incoming messages)
   // chat ID (only necessary if one device can have multiple chats)
@@ -56,6 +56,15 @@ typedef struct {
   char recipient[MAX_NAME_LENGTH];
   char text[MAX_TEXT_LENGTH];
 } message_t;
+
+struct ChatBufferState {
+  int message_buffer_write_index;
+  int chat_history_message_count;
+  int message_scroll_offset;  // Represents the # of messages scrolled up from most recent message
+  message_t chat_history[MAX_CHAT_MESSAGES];
+};
+
+ChatBufferState chat_buffer_state = {0, 0, 0, {}};
 
 // ------------------- PINS ----------------------------------------------- //
 const int readPin_adc_0 = 15;
@@ -293,17 +302,6 @@ void write_to_dac(uint8_t address, uint16_t value) {
   SPI.endTransaction();
 }
 
-// ------------------- Screen Behavior Vars/Constants -------------------- //
-
-message_t chat_history[MAX_CHAT_MESSAGES];
-int chat_history_message_count = 0;
-int message_scroll_offset = 0; // Tracks the current scroll offset, representing the number of messages scrolled up from the most recent message
-int message_buffer_write_index = 0; // Head pointer (next position to write)
-// Note: No tail pointer needed unless we want to delete messages
-IntervalTimer test_incoming_message;
-int incoming_message_count = 0;
-const int max_incoming = 4;
-
 // ------------------- Screen Behavior Utility Functions ----------------- //
 
 void _debug_print_message(message_t msg) {
@@ -317,9 +315,9 @@ void _debug_print_message(message_t msg) {
   Serial.println();
 }
 
-void _debug_print_chat_history() {
-  for (int i = 0; i < chat_history_message_count; i++) {
-    _debug_print_message(chat_history[i]);
+void _debug_print_chat_history(ChatBufferState* state) {
+  for (int i = 0; i < state->chat_history_message_count; i++) {
+    _debug_print_message(state->chat_history[i]);
   }
 }
 
@@ -329,12 +327,7 @@ void _debug_print_chat_history() {
   Redrawing is accomplished by first calculating the needed screen space for each message, factoring in
   formatting rules, and also obscures any message content that appears outside the chat history box bounds.
 
-  Global Variables Used:
-
-  - message_buffer_write_index – Used to calculate the starting index in the circular message buffer.
-  - message_scroll_offset – Determines the scroll position for displaying messages.
-  - chat_history_message_count – Total number of messages currently stored in the chat history.
-  - chat_history – The actual circular buffer holding chat message data.
+  Global variables used:
   - MAX_CHAT_MESSAGES – The size of the circular buffer for storing chat messages.
   - CHAT_BOX_START_Y – The starting vertical position of the chat box on the display.
   - CHAT_BOX_HEIGHT – The height of the chat box on the display.
@@ -345,27 +338,26 @@ void _debug_print_chat_history() {
   - ILI9341_WHITE – Color constant for clearing the chat box background.
   - ILI9341_RED – Color constant for the chat box border.
 
-  Drawing methods:
-
-  drawString(text_to_draw, draw_start_x, draw_start_y);
-  drawRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_outline_color);
-  fillRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_fill_color);
+  Drawing method params:
+  * drawString(text_to_draw, draw_start_x, draw_start_y);
+  * drawRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_outline_color);
+  * fillRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_fill_color);
 
 */
-void display_chat_history() {
+void display_chat_history(ChatBufferState* state) {
   /*
     Note that curr_message_index points to the current message in the buffer being displayed or accessed, adjusted for the user's scroll position.
     So if message_scroll_offset is 0, that means the most recent message in the history is being shown at the bottom (UP has not been pressed).
     Pressing the UP key once increments message_scroll_offset to 1, which means the NEXT most recent message is displayed at the bottom.
     From there, the outer for loop is responsible for drawing all of the previous message, starting at chat_history[curr_message_index] and incrementing curr_message_index by 1.
   */
-  int curr_message_index = (message_buffer_write_index - 1 - message_scroll_offset + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES;
+  int curr_message_index = (state->message_buffer_write_index - 1 - state->message_scroll_offset + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES;
   int curr_message_pos = CHAT_BOX_START_Y + CHAT_BOX_HEIGHT - LINE_HEIGHT - CHAT_BOX_BOTTOM_PADDING;
-  int messages_to_display_count = chat_history_message_count - message_scroll_offset;
+  int messages_to_display_count = state->chat_history_message_count - state->message_scroll_offset;
 
   // Serial.println("✨✨✨✨✨✨✨✨✨");
-  // Serial.printf("message_buffer_write_index: %d\n", message_buffer_write_index);
-  // Serial.printf("message_scroll_offset: %d\n", message_scroll_offset);
+  // Serial.printf("🍗 message_buffer_write_index: %d\n", state->message_buffer_write_index);
+  // Serial.printf("message_scroll_offset: %d\n", state->message_scroll_offset);
   // Serial.printf("curr_message_index: %d\n", curr_message_index);
   // Serial.println("🧩🧩🧩🧩🧩🧩🧩🧩🧩");
 
@@ -378,16 +370,16 @@ void display_chat_history() {
     // Serial.printf("******** Loop #%d\n", drawn_message_count + 1); // This should never exceed the # of messages in chat history
 
     // Stuff to get timestamp:
-    struct tm *timeinfo = localtime(&chat_history[curr_message_index].timestamp); // Converts Unix timestamp to local time format
+    struct tm *timeinfo = localtime(&state->chat_history[curr_message_index].timestamp); // Converts Unix timestamp to local time format
     char time_as_str[8];  // Buffer for "00:00am" format (7 chars + '\0') to hold final string that will get displayed
     strftime(time_as_str, sizeof(time_as_str), "%I:%M%p", timeinfo); // Puts time in a 00:00PM (or AM) format
 
     // Stuff to calculate the number of lines this message will occupy:
     int line_count = 1;
-    int text_length = strnlen(chat_history[curr_message_index].text, MAX_TEXT_LENGTH);
+    int text_length = strnlen(state->chat_history[curr_message_index].text, MAX_TEXT_LENGTH);
     int chars_in_current_line = 0;
     for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
-      if (chat_history[curr_message_index].text[curr_char_index] == '\n') {
+      if (state->chat_history[curr_message_index].text[curr_char_index] == '\n') {
         line_count++;
         chars_in_current_line = 0;
       } else if (chars_in_current_line >= CHAT_WRAP_LIMIT) {
@@ -405,7 +397,7 @@ void display_chat_history() {
     int draw_start_y = curr_message_pos - box_height + LINE_HEIGHT;
 
     // Stuff to draw message box and timestamp for incoming messages:
-    if (strcmp(chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
+    if (strcmp(state->chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
        // Draws timestamp at current line
       tft.drawString(time_as_str, INCOMING_TIMESTAMP_START_X, draw_start_y);
       tft.drawRect(INCOMING_BORDER_START_X, border_start_y, INCOMING_BORDER_WIDTH, border_height, ILI9341_BLUE);
@@ -415,13 +407,13 @@ void display_chat_history() {
       tft.drawString(time_as_str, OUTGOING_TIMESTAMP_START_X, draw_start_y);
       tft.drawRect(OUTGOING_BORDER_START_X, border_start_y, OUTGOING_BORDER_WIDTH, border_height, ILI9341_LIGHTGREY);
     }
-    Serial.println(chat_history[curr_message_index].text);
+    Serial.println(state->chat_history[curr_message_index].text);
 
     // Stuff to draw text chars for incoming messages:
-    if (strcmp(chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
+    if (strcmp(state->chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
       chars_in_current_line = 0;
       for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
-        if (chat_history[curr_message_index].text[curr_char_index] == '\n') {
+        if (state->chat_history[curr_message_index].text[curr_char_index] == '\n') {
           // Creates a new line:
           draw_start_x = INCOMING_TEXT_START_X;
           draw_start_y += LINE_HEIGHT;
@@ -431,11 +423,11 @@ void display_chat_history() {
           draw_start_x = INCOMING_TEXT_START_X;
           draw_start_y += LINE_HEIGHT;
           chars_in_current_line = 1;
-          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          tft.drawChar(draw_start_x, draw_start_y, state->chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
           draw_start_x += CHAR_WIDTH;
         } else {
           // Continues on same line:
-          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          tft.drawChar(draw_start_x, draw_start_y, state->chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
           draw_start_x += CHAR_WIDTH;
           chars_in_current_line++;
         }
@@ -445,7 +437,7 @@ void display_chat_history() {
       draw_start_x = OUTGOING_TEXT_START_X;
       chars_in_current_line = 0;
       for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
-        if (chat_history[curr_message_index].text[curr_char_index] == '\n') {
+        if (state->chat_history[curr_message_index].text[curr_char_index] == '\n') {
           draw_start_x = OUTGOING_TEXT_START_X;
           draw_start_y += LINE_HEIGHT;
           chars_in_current_line = 0;
@@ -453,10 +445,10 @@ void display_chat_history() {
           draw_start_x = OUTGOING_TEXT_START_X;
           draw_start_y += LINE_HEIGHT;
           chars_in_current_line = 1;
-          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          tft.drawChar(draw_start_x, draw_start_y, state->chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
           draw_start_x += CHAR_WIDTH;
         } else {
-          tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+          tft.drawChar(draw_start_x, draw_start_y, state->chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
           draw_start_x += CHAR_WIDTH;
           chars_in_current_line++;
         }
@@ -472,7 +464,7 @@ void display_chat_history() {
   }
 }
 
-void add_message_to_chat_history(const char* message_text, const char* sender, const char* recipient) {
+void add_message_to_chat_history(ChatBufferState* state, const char* message_text, const char* sender, const char* recipient) {
   message_t curr_message {
     time(NULL), // current time
     sender,
@@ -489,10 +481,11 @@ void add_message_to_chat_history(const char* message_text, const char* sender, c
   curr_message.recipient[MAX_NAME_LENGTH - 1] = '\0';
 
   // Ring buffer logic to overwrite oldest message when buffer is exceeded:
-  chat_history[message_buffer_write_index] = curr_message;
-  message_buffer_write_index = (message_buffer_write_index + 1) % MAX_CHAT_MESSAGES;
-  if (chat_history_message_count < MAX_CHAT_MESSAGES) {
-    chat_history_message_count++;
+  // Serial.printf("🔔 message_buffer_write_index: %d\n", state->message_buffer_write_index);
+  state->chat_history[state->message_buffer_write_index] = curr_message;
+  state->message_buffer_write_index = (state->message_buffer_write_index + 1) % MAX_CHAT_MESSAGES;
+  if (state->chat_history_message_count < MAX_CHAT_MESSAGES) {
+    state->chat_history_message_count++;
   }
 
 }
@@ -504,9 +497,9 @@ void transmit_message() {
 void send_message(const char* message_text) {
   // transmit_message(message_text);
 
-  add_message_to_chat_history(message_text, RECIPIENT_UNKEY, RECIPIENT_VOID);
+  add_message_to_chat_history(&chat_buffer_state, message_text, RECIPIENT_UNKEY, RECIPIENT_VOID);
 
-  display_chat_history();
+  display_chat_history(&chat_buffer_state);
 }
 
 /*
@@ -514,7 +507,7 @@ void send_message(const char* message_text) {
   It detects new key presses, updates the screen, and processes specific keys like CAPS, SYM, and SEND. 
   It also uses ilog2() to identify the index of the pressed key.
 */
-void poll_keyboard() {
+void poll_keyboard(ChatBufferState* state) {
   static int modifier = 0;
 
   // latch keyboard state into shift registers
@@ -568,10 +561,10 @@ void poll_keyboard() {
           if (message_scroll_offset == chat_history_message_count - 1), that means the oldest message is
           currently displayed at the bottom of the history box
           */
-          if (message_scroll_offset < chat_history_message_count - 1) {
-            message_scroll_offset++;
+          if (state->message_scroll_offset < state->chat_history_message_count - 1) {
+            state->message_scroll_offset++;
             Serial.printf("✅ Scroll successful");
-            display_chat_history();
+            display_chat_history(&chat_buffer_state);
           } else {
             // message_scroll_offset should never exceed (chat_history_message_count - 1)
             // even if the user keeps pressing up
@@ -580,9 +573,9 @@ void poll_keyboard() {
           break;
         case DOWN_KEY_INDEX:
           Serial.println("You pressed DOWN");
-          if (message_scroll_offset > 0) {
-            message_scroll_offset--;
-            display_chat_history();
+          if (state->message_scroll_offset > 0) {
+            state->message_scroll_offset--;
+            display_chat_history(&chat_buffer_state);
           } else {
             Serial.println("❌ Scrolling down not allowed");
           }
@@ -621,7 +614,7 @@ void poll_keyboard() {
           reset_tx_display_buffer();
           redraw_tx_display_window();
 
-          display_chat_history(); // 🔔 is this call necessary? test without
+          display_chat_history(&chat_buffer_state); // 🔔 is this call necessary? test without
           break;
         default:
           char key = KEYBOARD_LAYOUT[key_index];
@@ -654,9 +647,10 @@ void setup_keyboard_poller() {
   pinMode(kb_data, INPUT);
 
   // Start timer
-  if (!keyboard_poller_timer.begin(poll_keyboard, keyboard_poller_period_usec)) {
+  if (!keyboard_poller_timer.begin([]() { poll_keyboard(&chat_buffer_state); }, keyboard_poller_period_usec)) {
     Serial.println("Failed setting up poller");
   }
+
 }
 
 /*
@@ -753,12 +747,17 @@ void poll_battery() {
   }
 }
 
+/*
+  Currently used to simulated staggered incoming messages
+*/
+int incoming_message_count = 0;
+IntervalTimer test_incoming_message;
 void incoming_message_callback() {
   const char *test_message_text = TEST_MESSAGE_TEXT;
-  add_message_to_chat_history(test_message_text, RECIPIENT_VOID, RECIPIENT_UNKEY);
-  display_chat_history();
+  add_message_to_chat_history(&chat_buffer_state, test_message_text, RECIPIENT_VOID, RECIPIENT_UNKEY);
+  display_chat_history(&chat_buffer_state);
   incoming_message_count++;
-  if (incoming_message_count >= max_incoming) {
+  if (incoming_message_count >= TESTING_MESSAGE_COUNT_LIMIT) {
     test_incoming_message.end();
   }
 }
