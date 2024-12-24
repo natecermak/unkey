@@ -6,30 +6,44 @@
 #include "goertzel.h"
 // #include "font_Arial.h"
 
-#define CHAT_HISTORY_LINE_PADDING 11 // Extra vertical space between lines in chat history box area
-#define CHAT_HISTORY_X 0 // Chat history box horizontal offset (0 is flush to left screen bound)
-#define CHAT_HISTORY_Y 25 // Chat history box vertical offset (0 is flush to top screen bound)
-#define CHAT_HISTORY_W 235 // Chat history box width
-#define CHAT_HISTORY_H 201 // // Chat history box height
-#define CHAT_HISTORY_BOTTOM_PADDING 3
+#define CHAT_BOX_LINE_PADDING 11 // Extra vertical space between lines in chat history box area
+#define CHAT_BOX_START_X 0 // Chat history box horizontal offset (0 is flush to left screen bound)
+#define CHAT_BOX_START_Y 25 // Chat history box vertical offset (0 is flush to top screen bound)
+#define CHAT_BOX_WIDTH 235 // Chat history box width
+#define CHAT_BOX_HEIGHT 201 // // Chat history box height
+#define CHAT_BOX_BOTTOM_PADDING 3
 #define CHAR_WIDTH 7 // Width of each character in pixels
 #define CHAT_WRAP_LIMIT 16 // Sender message wrapping cut-off
 #define LINE_HEIGHT 10 // Height of each line in pixels
 #define MAX_CHAT_MESSAGES 50
 #define MAX_NAME_LENGTH 20
 #define MAX_TEXT_LENGTH 400 // Unit is characters
-#define RECEIVED_MESSAGE_X 70 // Received message horizontal offset
+#define INCOMING_TEXT_START_X 70 // Received message horizontal offset
+#define INCOMING_BORDER_START_X 62
+#define INCOMING_BORDER_WIDTH 132
+#define INCOMING_BORDER_MARGIN 6
+#define OUTGOING_TEXT_START_X 120 // Sent message horizontal offset
+#define OUTGOING_BORDER_START_X 112
+#define OUTGOING_BORDER_WIDTH 122
 #define SCAN_CHAIN_LENGTH 56  // 56 keys that need to be checked per polling cycle
-#define SENT_MESSAGE_X 120 // Sent message horizontal offset
-#define SEND_WRAP_LIMIT 30 // Sender message wrapping cut-off
+#define SEND_WRAP_LIMIT 30 // Sender message wrapping cut-off`
 #define TEXT_SIZE 1 // Text size multiplier (depends on your display)
-#define TIMESTAMP_LEFT_INDENT 60 // Timestamp horizontal offset (0 is flush to left screen bound)
+#define INCOMING_TIMESTAMP_START_X 10 // Timestamp horizontal offset for incoming messages (0 is flush to left screen bound)
+#define OUTGOING_TIMESTAMP_START_X 60 // Timestamp horizontal offset for outgoing messages (0 is flush to left screen bound)
 #define TYPING_BOX_LINE_PADDING 2 // Extra vertical space between lines in typing box area
-#define TYPING_BOX_X 0 // Typing box horizontal offset (0 is flush to left screen bound)
-#define TYPING_BOX_Y 225 // Typing box vertical offset (0 is flush to top screen bound
-#define TYPING_BOX_H 90 // Typing box height
+#define TYPING_BOX_START_X 0 // Typing box horizontal offset (0 is flush to left screen bound)
+#define TYPING_BOX_START_Y 225 // Typing box vertical offset (0 is flush to top screen bound
+#define TYPING_BOX_HEIGHT 90 // Typing box height
 #define TYPING_CURSOR_X 2 // Typing cursor horizontal offset (0 is flush to left screen bound)
 #define TYPING_CURSOR_Y 227 // Typing cursor vertical offset (0 is flush to top screen bound
+#define BATTERY_BOX_HEIGHT 10
+#define SPACE_UNDER_BATTERY_WIDTH 15
+#define BATTERY_BOX_WIDTH 80
+#define SPACE_BESIDE_BATTERY_WIDTH 155 // 235 - BATTERY_BOX_WIDTH
+#define BORDER_PADDING_Y 6
+#define RECIPIENT_UNKEY "unkey"
+#define RECIPIENT_VOID "the void"
+#define TEST_MESSAGE_TEXT "Incoming from The Void"
 
 // ------------------- TYPES ----------------------------------------------- //
 typedef struct {
@@ -321,12 +335,19 @@ void _debug_print_chat_history() {
   - `MAX_CHAT_MESSAGES`: The total number of messages that can be stored in the chat buffer.
   - `chat_history`: The array storing all chat messages.
   - `chat_history_message_count`: The current number of messages in the chat history.
-  - `CHAT_HISTORY_X`, `CHAT_HISTORY_Y`, `CHAT_HISTORY_W`, `CHAT_HISTORY_H`: Dimensions and position of the chat history box.
+  - `CHAT_BOX_START_X`, `CHAT_BOX_START_Y`, `CHAT_BOX_WIDTH`, `CHAT_BOX_HEIGHT`: Dimensions and position of the chat history box.
   - `LINE_HEIGHT`: The height of each line in pixels.
-  - `CHAT_HISTORY_BOTTOM_PADDING`: Extra padding at the bottom of the chat history box.
+  - `CHAT_BOX_BOTTOM_PADDING`: Extra padding at the bottom of the chat history box.
   - `CHAT_WRAP_LIMIT`: Maximum number of characters per line before wrapping.
   - `MAX_TEXT_LENGTH`: Maximum allowable length of a single message.
   - `tft`: The display object used for drawing.
+
+  drawString(text_to_draw, draw_start_x, draw_start_y);
+
+  drawRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_outline_color);
+
+  fillRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_fill_color);
+
 */
 void display_chat_history() {
   /*
@@ -336,7 +357,7 @@ void display_chat_history() {
     From there, the outer for loop is responsible for drawing all of the previous message, starting at chat_history[curr_message_index] and incrementing curr_message_index by 1.
   */
   int curr_message_index = (message_buffer_write_index - 1 - message_scroll_offset + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES;
-  int curr_message_pos = CHAT_HISTORY_Y + CHAT_HISTORY_H - LINE_HEIGHT - CHAT_HISTORY_BOTTOM_PADDING;
+  int curr_message_pos = CHAT_BOX_START_Y + CHAT_BOX_HEIGHT - LINE_HEIGHT - CHAT_BOX_BOTTOM_PADDING;
   int messages_to_display_count = chat_history_message_count - message_scroll_offset;
 
   // Serial.println("✨✨✨✨✨✨✨✨✨");
@@ -345,9 +366,9 @@ void display_chat_history() {
   // Serial.printf("curr_message_index: %d\n", curr_message_index);
   // Serial.println("🧩🧩🧩🧩🧩🧩🧩🧩🧩");
 
-  // Clear entire chat box area
-  tft.fillRect(CHAT_HISTORY_X, 10, CHAT_HISTORY_W, CHAT_HISTORY_H + 13, ILI9341_WHITE);
-  tft.drawRect(CHAT_HISTORY_X, CHAT_HISTORY_Y, CHAT_HISTORY_W, CHAT_HISTORY_H, ILI9341_RED);
+  // Clear entire chat box area 
+  tft.fillRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_WHITE);
+  tft.drawRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_RED);
 
   // Iterates over and draws each message, starting with whatever message is at curr_message_index, then the next most recent message, and so on
   for (int drawn_message_count = 0; drawn_message_count < messages_to_display_count; drawn_message_count++) {
@@ -373,37 +394,38 @@ void display_chat_history() {
         chars_in_current_line++;
       }
     }
-    int box_height = line_count * LINE_HEIGHT;
-    int top_line_y = curr_message_pos - box_height + LINE_HEIGHT;
+
+    const int box_height = line_count * LINE_HEIGHT;
+    const int border_start_y = curr_message_pos - box_height + BORDER_PADDING_Y;
+    const int border_height = box_height + BORDER_PADDING_Y;
+    int draw_start_x = INCOMING_TEXT_START_X;
+    int draw_start_y = curr_message_pos - box_height + LINE_HEIGHT;
 
     // Stuff to draw message box and timestamp for incoming messages:
-    if (strcmp(chat_history[curr_message_index].recipient, "unkey") == 0) {
-      tft.drawString(time_as_str, TIMESTAMP_LEFT_INDENT - 50, curr_message_pos - (box_height - LINE_HEIGHT)); // Draws timestamp at current line
-      // tft.drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
-      tft.drawRect(RECEIVED_MESSAGE_X - 8, curr_message_pos - box_height + 6, CHAT_WRAP_LIMIT * CHAR_WIDTH + 20, box_height + 5, ILI9341_BLUE);
-    // ...and outgoing messages:
+    if (strcmp(chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
+       // Draws timestamp at current line
+      tft.drawString(time_as_str, INCOMING_TIMESTAMP_START_X, draw_start_y);
+      tft.drawRect(INCOMING_BORDER_START_X, border_start_y, INCOMING_BORDER_WIDTH, border_height, ILI9341_BLUE);
+
+    // Stuff to draw message box and timestamp for outgoing messages:
     } else {
-      // Serial.println("💬 Drawing an outgoing message box and timestamp");
-      tft.drawString(time_as_str, TIMESTAMP_LEFT_INDENT, curr_message_pos - (box_height - LINE_HEIGHT)); // Draws timestamp at current line
-      tft.drawRect(SENT_MESSAGE_X - 8, curr_message_pos - box_height + 6, CHAT_WRAP_LIMIT * CHAR_WIDTH + 10, box_height + 5, ILI9341_LIGHTGREY);
+      tft.drawString(time_as_str, OUTGOING_TIMESTAMP_START_X, draw_start_y);
+      tft.drawRect(OUTGOING_BORDER_START_X, border_start_y, OUTGOING_BORDER_WIDTH, border_height, ILI9341_LIGHTGREY);
     }
-    // Serial.println("🔠 Text:");
     Serial.println(chat_history[curr_message_index].text);
 
     // Stuff to draw text chars for incoming messages:
-    int draw_start_y = top_line_y;
-    if (strcmp(chat_history[curr_message_index].recipient, "unkey") == 0) {
-      int draw_start_x = RECEIVED_MESSAGE_X;
+    if (strcmp(chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
       chars_in_current_line = 0;
       for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
         if (chat_history[curr_message_index].text[curr_char_index] == '\n') {
           // Creates a new line:
-          draw_start_x = RECEIVED_MESSAGE_X;
+          draw_start_x = INCOMING_TEXT_START_X;
           draw_start_y += LINE_HEIGHT;
           chars_in_current_line = 0;
         } else if (chars_in_current_line >= CHAT_WRAP_LIMIT) {
           // Draws curr char on same line, then adds a new line:
-          draw_start_x = RECEIVED_MESSAGE_X;
+          draw_start_x = INCOMING_TEXT_START_X;
           draw_start_y += LINE_HEIGHT;
           chars_in_current_line = 1;
           tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
@@ -415,17 +437,17 @@ void display_chat_history() {
           chars_in_current_line++;
         }
       }
-    // ...and outgoing messages:
+    // Stuff to draw text chars for outgoing messages:
     } else {
-      int draw_start_x = SENT_MESSAGE_X;
+      draw_start_x = OUTGOING_TEXT_START_X;
       chars_in_current_line = 0;
       for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
         if (chat_history[curr_message_index].text[curr_char_index] == '\n') {
-          draw_start_x = SENT_MESSAGE_X;
+          draw_start_x = OUTGOING_TEXT_START_X;
           draw_start_y += LINE_HEIGHT;
           chars_in_current_line = 0;
         } else if (chars_in_current_line >= CHAT_WRAP_LIMIT) {
-          draw_start_x = SENT_MESSAGE_X;
+          draw_start_x = OUTGOING_TEXT_START_X;
           draw_start_y += LINE_HEIGHT;
           chars_in_current_line = 1;
           tft.drawChar(draw_start_x, draw_start_y, chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
@@ -439,10 +461,10 @@ void display_chat_history() {
     }
 
     // Clips anything that scrolls past upper bound of chat history box (lib doesn't have a function for this)
-    tft.fillRect(CHAT_HISTORY_X, 10, CHAT_HISTORY_W, 15, ILI9341_WHITE); // under battery display
-    tft.fillRect(80, 0, CHAT_HISTORY_W - 80, CHAT_HISTORY_Y, ILI9341_WHITE); // next to battery display
+    tft.fillRect(CHAT_BOX_START_X, BATTERY_BOX_HEIGHT, CHAT_BOX_WIDTH, SPACE_UNDER_BATTERY_WIDTH, ILI9341_WHITE); // under battery display
+    tft.fillRect(BATTERY_BOX_WIDTH, 0, SPACE_BESIDE_BATTERY_WIDTH, CHAT_BOX_START_Y, ILI9341_WHITE); // next to battery display
 
-    curr_message_pos -= (box_height + CHAT_HISTORY_LINE_PADDING); // Separates messages
+    curr_message_pos -= (box_height + CHAT_BOX_LINE_PADDING); // Separates messages
     curr_message_index = (curr_message_index - 1 + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES; // Gets next most recent message from ring buffer
   }
 }
@@ -479,7 +501,7 @@ void transmit_message() {
 void send_message(const char* message_text) {
   // transmit_message(message_text);
 
-  add_message_to_chat_history(message_text, "unkey", "the void");
+  add_message_to_chat_history(message_text, RECIPIENT_UNKEY, RECIPIENT_VOID);
 
   display_chat_history();
 }
@@ -651,8 +673,8 @@ static void reset_tx_display_buffer() {
 */
 static void redraw_tx_display_window() {
   // Clears the typing box after message send:
-  tft.fillRect(TYPING_BOX_X, TYPING_BOX_Y, CHAT_HISTORY_W, TYPING_BOX_H, ILI9341_WHITE);
-  tft.drawRect(TYPING_BOX_X, TYPING_BOX_Y, CHAT_HISTORY_W, TYPING_BOX_H, ILI9341_RED);
+  tft.fillRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_WHITE);
+  tft.drawRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_RED);
 
   // TODO: this is stuff to display the line breaks - might want to move out into a helper func
   int draw_start_x = TYPING_CURSOR_X;
@@ -692,9 +714,12 @@ void setup_screen() {
   tft.begin();
   tft.setRotation(2);
   tft.fillScreen(ILI9341_WHITE);
-  tft.drawRect(CHAT_HISTORY_X, CHAT_HISTORY_Y, CHAT_HISTORY_W, CHAT_HISTORY_H, ILI9341_RED); // chat history boundaries
-  tft.drawRect(CHAT_HISTORY_X, TYPING_BOX_Y, CHAT_HISTORY_W, TYPING_BOX_H, ILI9341_RED); // typing box boundaries
-  tft.setCursor(TYPING_CURSOR_X, TYPING_CURSOR_Y); // set cursor to starting position inside typing box
+  // Draws chat history boundaries:
+  tft.drawRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_RED);
+  // Draws typing box boundaries:
+  tft.drawRect(CHAT_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_RED);
+  // Sets cursor to starting position inside typing box:
+  tft.setCursor(TYPING_CURSOR_X, TYPING_CURSOR_Y);
 
   reset_tx_display_buffer();
 }
@@ -726,8 +751,8 @@ void poll_battery() {
 }
 
 void incoming_message_callback() {
-  const char *test_message_text = "Incoming from The Void";
-  add_message_to_chat_history(test_message_text, "the void", "unkey");
+  const char *test_message_text = TEST_MESSAGE_TEXT;
+  add_message_to_chat_history(test_message_text, RECIPIENT_VOID, RECIPIENT_UNKEY);
   display_chat_history();
   incoming_message_count++;
   if (incoming_message_count >= max_incoming) {
