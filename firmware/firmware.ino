@@ -330,22 +330,25 @@ void _debug_print_chat_history() {
   formatting rules, and also obscures any message content that appears outside the chat history box bounds.
 
   Global Variables Used:
-  - `message_buffer_write_index`: Tracks the head index of the message buffer (ring buffer).
-  - `message_scroll_offset`: Tracks the current scroll offset, representing the number of messages scrolled up from the most recent message
-  - `MAX_CHAT_MESSAGES`: The total number of messages that can be stored in the chat buffer.
-  - `chat_history`: The array storing all chat messages.
-  - `chat_history_message_count`: The current number of messages in the chat history.
-  - `CHAT_BOX_START_X`, `CHAT_BOX_START_Y`, `CHAT_BOX_WIDTH`, `CHAT_BOX_HEIGHT`: Dimensions and position of the chat history box.
-  - `LINE_HEIGHT`: The height of each line in pixels.
-  - `CHAT_BOX_BOTTOM_PADDING`: Extra padding at the bottom of the chat history box.
-  - `CHAT_WRAP_LIMIT`: Maximum number of characters per line before wrapping.
-  - `MAX_TEXT_LENGTH`: Maximum allowable length of a single message.
-  - `tft`: The display object used for drawing.
+
+  - message_buffer_write_index – Used to calculate the starting index in the circular message buffer.
+  - message_scroll_offset – Determines the scroll position for displaying messages.
+  - chat_history_message_count – Total number of messages currently stored in the chat history.
+  - chat_history – The actual circular buffer holding chat message data.
+  - MAX_CHAT_MESSAGES – The size of the circular buffer for storing chat messages.
+  - CHAT_BOX_START_Y – The starting vertical position of the chat box on the display.
+  - CHAT_BOX_HEIGHT – The height of the chat box on the display.
+  - LINE_HEIGHT – The height of a single line of text.
+  - CHAT_BOX_BOTTOM_PADDING – Padding below the last line in the chat box.
+  - CHAT_BOX_START_X – The starting horizontal position of the chat box.
+  - CHAT_BOX_WIDTH – The width of the chat box.
+  - ILI9341_WHITE – Color constant for clearing the chat box background.
+  - ILI9341_RED – Color constant for the chat box border.
+
+  Drawing methods:
 
   drawString(text_to_draw, draw_start_x, draw_start_y);
-
   drawRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_outline_color);
-
   fillRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_fill_color);
 
 */
