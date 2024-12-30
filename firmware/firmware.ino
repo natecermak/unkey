@@ -4,7 +4,6 @@
 #include <SPI.h>
 #include <Wire.h>
 #include "goertzel.h"
-// #include "font_Arial.h"
 // #include <ili9341_t3n_font_ComicSansMS.h> // how to import ili9341_t3n fonts, which should automatically include anti-aliasing
 
 #define CHAT_BOX_LINE_PADDING 11 // Extra vertical space between lines in chat history box area
@@ -31,7 +30,6 @@
 #define TEXT_SIZE 1 // Text size multiplier (depends on your display)
 #define INCOMING_TIMESTAMP_START_X 10 // Timestamp horizontal offset for incoming messages (0 is flush to left screen bound)
 #define OUTGOING_TIMESTAMP_START_X 60 // Timestamp horizontal offset for outgoing messages (0 is flush to left screen bound)
-#define TYPING_BOX_LINE_PADDING 2 // Extra vertical space between lines in typing box area
 #define TYPING_BOX_START_X 0 // Typing box horizontal offset (0 is flush to left screen bound)
 #define TYPING_BOX_START_Y 225 // Typing box vertical offset (0 is flush to top screen bound
 #define TYPING_BOX_HEIGHT 90 // Typing box height
@@ -305,6 +303,32 @@ void write_to_dac(uint8_t address, uint16_t value) {
 
 // ------------------- Screen Behavior Utility Functions ----------------- //
 
+void draw_message_text(int length_limit, const char *text_to_draw, int text_start_x, int text_start_y, int wrap_limit) {
+  int start_x = text_start_x;
+  int start_y = text_start_y;
+  int chars_in_current_line = 0;
+  for (int curr_char_index = 0; curr_char_index < length_limit; curr_char_index++) {
+    if (text_to_draw[curr_char_index] == '\n') {
+      // Move the cursor to the next line (adjust draw_start_y based on text size)
+      start_x = text_start_x;
+      start_y += LINE_HEIGHT;
+      chars_in_current_line = 0;
+    } else if (chars_in_current_line >= wrap_limit) {
+    // } else if (curr_char_index >= wrap_limit) {
+      start_x = text_start_x;
+      start_y += LINE_HEIGHT;
+      chars_in_current_line = 1;
+      tft.drawChar(start_x, start_y, text_to_draw[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+      start_x += CHAR_WIDTH;
+    } else {
+      // Draw the character at the current cursor position
+      tft.drawChar(start_x, start_y, text_to_draw[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
+      start_x += CHAR_WIDTH;
+      chars_in_current_line++;
+    }
+  }
+}
+
 void _debug_print_message(message_t msg) {
   // Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned, which time_t is on teensy
   // Serial.print("Sender: ");
@@ -356,20 +380,12 @@ void display_chat_history(ChatBufferState* state) {
   int curr_message_pos = CHAT_BOX_START_Y + CHAT_BOX_HEIGHT - LINE_HEIGHT - CHAT_BOX_BOTTOM_PADDING;
   int messages_to_display_count = state->chat_history_message_count - state->message_scroll_offset;
 
-  // Serial.println("✨✨✨✨✨✨✨✨✨");
-  // Serial.printf("🍗 message_buffer_write_index: %d\n", state->message_buffer_write_index);
-  // Serial.printf("message_scroll_offset: %d\n", state->message_scroll_offset);
-  // Serial.printf("curr_message_index: %d\n", curr_message_index);
-  // Serial.println("🧩🧩🧩🧩🧩🧩🧩🧩🧩");
-
   // Clear entire chat box area 
   tft.fillRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_WHITE);
   tft.drawRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_RED);
 
   // Iterates over and draws each message, starting with whatever message is at curr_message_index, then the next most recent message, and so on
   for (int drawn_message_count = 0; drawn_message_count < messages_to_display_count; drawn_message_count++) {
-    // Serial.printf("******** Loop #%d\n", drawn_message_count + 1); // This should never exceed the # of messages in chat history
-
     // Stuff to get timestamp:
     struct tm *timeinfo = localtime(&state->chat_history[curr_message_index].timestamp); // Converts Unix timestamp to local time format
     char time_as_str[8];  // Buffer for "00:00am" format (7 chars + '\0') to hold final string that will get displayed
@@ -394,12 +410,10 @@ void display_chat_history(ChatBufferState* state) {
     const int box_height = line_count * LINE_HEIGHT;
     const int border_start_y = curr_message_pos - box_height + BORDER_PADDING_Y;
     const int border_height = box_height + BORDER_PADDING_Y;
-    int draw_start_x = INCOMING_TEXT_START_X;
     int draw_start_y = curr_message_pos - box_height + LINE_HEIGHT;
 
     // Stuff to draw message box and timestamp for incoming messages:
     if (strcmp(state->chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
-
       // Testing anti-aliasing on incoming message timestamp
       // tft.setFont(ComicSansMS_12);
 
@@ -415,48 +429,10 @@ void display_chat_history(ChatBufferState* state) {
 
     // Stuff to draw text chars for incoming messages:
     if (strcmp(state->chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
-      chars_in_current_line = 0;
-      for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
-        if (state->chat_history[curr_message_index].text[curr_char_index] == '\n') {
-          // Creates a new line:
-          draw_start_x = INCOMING_TEXT_START_X;
-          draw_start_y += LINE_HEIGHT;
-          chars_in_current_line = 0;
-        } else if (chars_in_current_line >= CHAT_WRAP_LIMIT) {
-          // Draws curr char on same line, then adds a new line:
-          draw_start_x = INCOMING_TEXT_START_X;
-          draw_start_y += LINE_HEIGHT;
-          chars_in_current_line = 1;
-          tft.drawChar(draw_start_x, draw_start_y, state->chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
-          draw_start_x += CHAR_WIDTH;
-        } else {
-          // Continues on same line:
-          tft.drawChar(draw_start_x, draw_start_y, state->chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
-          draw_start_x += CHAR_WIDTH;
-          chars_in_current_line++;
-        }
-      }
+      draw_message_text(text_length, state->chat_history[curr_message_index].text, INCOMING_TEXT_START_X, draw_start_y, CHAT_WRAP_LIMIT);
     // Stuff to draw text chars for outgoing messages:
     } else {
-      draw_start_x = OUTGOING_TEXT_START_X;
-      chars_in_current_line = 0;
-      for (int curr_char_index = 0; curr_char_index < text_length; curr_char_index++) {
-        if (state->chat_history[curr_message_index].text[curr_char_index] == '\n') {
-          draw_start_x = OUTGOING_TEXT_START_X;
-          draw_start_y += LINE_HEIGHT;
-          chars_in_current_line = 0;
-        } else if (chars_in_current_line >= CHAT_WRAP_LIMIT) {
-          draw_start_x = OUTGOING_TEXT_START_X;
-          draw_start_y += LINE_HEIGHT;
-          chars_in_current_line = 1;
-          tft.drawChar(draw_start_x, draw_start_y, state->chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
-          draw_start_x += CHAR_WIDTH;
-        } else {
-          tft.drawChar(draw_start_x, draw_start_y, state->chat_history[curr_message_index].text[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
-          draw_start_x += CHAR_WIDTH;
-          chars_in_current_line++;
-        }
-      }
+      draw_message_text(text_length, state->chat_history[curr_message_index].text, OUTGOING_TEXT_START_X, draw_start_y, CHAT_WRAP_LIMIT);
     }
 
     // Clips anything that scrolls past upper bound of chat history box (lib doesn't have a function for this)
@@ -485,7 +461,6 @@ void add_message_to_chat_history(ChatBufferState* state, const char* message_tex
   curr_message.recipient[MAX_NAME_LENGTH - 1] = '\0';
 
   // Ring buffer logic to overwrite oldest message when buffer is exceeded:
-  // Serial.printf("🔔 message_buffer_write_index: %d\n", state->message_buffer_write_index);
   state->chat_history[state->message_buffer_write_index] = curr_message;
   state->message_buffer_write_index = (state->message_buffer_write_index + 1) % MAX_CHAT_MESSAGES;
   if (state->chat_history_message_count < MAX_CHAT_MESSAGES) {
@@ -630,7 +605,6 @@ void poll_keyboard(ChatBufferState* state) {
   starting a timer that calls poll_keyboard at regular intervals
 */
 void setup_keyboard_poller() {
-  // Serial.println("setup_keyboard_poller() called");
   switch_state = 0;
 
   // Set up SPI
@@ -662,33 +636,9 @@ static void reset_tx_display_buffer() {
   Usage: Called in poll_keyboard when the buffer changes and needs to be updated on the screen.
 */
 static void redraw_typing_box() {
-  // Clears the typing box after message send:
   tft.fillRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_WHITE);
   tft.drawRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_RED);
-
-  // TODO: this is stuff to display the line breaks - might want to move out into a helper func
-  int draw_start_x = TYPING_CURSOR_X;
-  int draw_start_y = TYPING_CURSOR_Y;
-  int chars_in_current_line = 0;
-  for (int curr_char_index = 0; curr_char_index < tx_display_buffer_length; curr_char_index++) {
-    if (tx_display_buffer[curr_char_index] == '\n') {
-      // Move the cursor to the next line (adjust draw_start_y based on text size)
-      draw_start_x = TYPING_CURSOR_X;
-      draw_start_y += LINE_HEIGHT + TYPING_BOX_LINE_PADDING;
-      chars_in_current_line = 0;
-    } else if (curr_char_index >= SEND_WRAP_LIMIT) {
-      draw_start_x = TYPING_CURSOR_X;
-      draw_start_y += LINE_HEIGHT + TYPING_BOX_LINE_PADDING;
-      chars_in_current_line = 1;
-      tft.drawChar(draw_start_x, draw_start_y, tx_display_buffer[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
-      draw_start_x += CHAR_WIDTH;
-    } else {
-      // Draw the character at the current cursor position
-      tft.drawChar(draw_start_x, draw_start_y, tx_display_buffer[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
-      draw_start_x += CHAR_WIDTH;
-      chars_in_current_line++;
-    }
-  }
+  draw_message_text(tx_display_buffer_length, tx_display_buffer, TYPING_CURSOR_X, TYPING_CURSOR_Y, SEND_WRAP_LIMIT);
 }
 
 /*
