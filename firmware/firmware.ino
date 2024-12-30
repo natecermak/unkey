@@ -414,10 +414,7 @@ void display_chat_history(ChatBufferState* state) {
 
     // Stuff to draw message box and timestamp for incoming messages:
     if (strcmp(state->chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
-      // Testing anti-aliasing on incoming message timestamp
-      // tft.setFont(ComicSansMS_12);
-
-       // Draws timestamp at current line
+      // Draws timestamp at current line:
       tft.drawString(time_as_str, INCOMING_TIMESTAMP_START_X, draw_start_y);
       tft.drawRect(INCOMING_BORDER_START_X, border_start_y, INCOMING_BORDER_WIDTH, border_height, ILI9341_BLUE);
 
