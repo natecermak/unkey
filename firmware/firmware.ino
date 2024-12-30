@@ -5,6 +5,7 @@
 #include <Wire.h>
 #include "goertzel.h"
 // #include "font_Arial.h"
+// #include <ili9341_t3n_font_ComicSansMS.h> // how to import ili9341_t3n fonts, which should automatically include anti-aliasing
 
 #define CHAT_BOX_LINE_PADDING 11 // Extra vertical space between lines in chat history box area
 #define CHAT_BOX_START_X 0 // Chat history box horizontal offset (0 is flush to left screen bound)
@@ -44,7 +45,7 @@
 #define RECIPIENT_UNKEY "unkey"
 #define RECIPIENT_VOID "the void"
 #define TEST_MESSAGE_TEXT "Incoming from The Void"
-#define TESTING_MESSAGE_COUNT_LIMIT 4
+#define TESTING_MESSAGE_COUNT_LIMIT 2
 
 typedef struct {
   // message ID (might need once we need to handle incoming messages)
@@ -398,6 +399,10 @@ void display_chat_history(ChatBufferState* state) {
 
     // Stuff to draw message box and timestamp for incoming messages:
     if (strcmp(state->chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
+
+      // Testing anti-aliasing on incoming message timestamp
+      // tft.setFont(ComicSansMS_12);
+
        // Draws timestamp at current line
       tft.drawString(time_as_str, INCOMING_TIMESTAMP_START_X, draw_start_y);
       tft.drawRect(INCOMING_BORDER_START_X, border_start_y, INCOMING_BORDER_WIDTH, border_height, ILI9341_BLUE);
@@ -407,7 +412,6 @@ void display_chat_history(ChatBufferState* state) {
       tft.drawString(time_as_str, OUTGOING_TIMESTAMP_START_X, draw_start_y);
       tft.drawRect(OUTGOING_BORDER_START_X, border_start_y, OUTGOING_BORDER_WIDTH, border_height, ILI9341_LIGHTGREY);
     }
-    Serial.println(state->chat_history[curr_message_index].text);
 
     // Stuff to draw text chars for incoming messages:
     if (strcmp(state->chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
@@ -584,7 +588,7 @@ void poll_keyboard(ChatBufferState* state) {
           Serial.println("You pressed BACKSPACE");
           tx_display_buffer[tx_display_buffer_length] = '\0';
           tx_display_buffer_length--;
-          redraw_tx_display_window();
+          redraw_typing_box();
           break;
         case RET_KEY_INDEX:
           Serial.println("You pressed RETURN");
@@ -592,7 +596,7 @@ void poll_keyboard(ChatBufferState* state) {
             tx_display_buffer[tx_display_buffer_length] = '\n';
             tx_display_buffer_length++;
           }
-          redraw_tx_display_window();
+          redraw_typing_box();
           break;
         case SEND_KEY_INDEX:
           Serial.println("You pressed SEND");
@@ -601,20 +605,9 @@ void poll_keyboard(ChatBufferState* state) {
             Serial.println("No message to send");
             break;
           }
-          // Just prints the current content of the buffer:
-          // for (int i = 0; i < tx_display_buffer_length; i++) {
-          //   Serial.print(tx_display_buffer[i]);
-          //   Serial.print('|');
-          // }
-          // Serial.println();
-
           send_message(tx_display_buffer);
-
-          // Clears message staging area after it's been sent
           reset_tx_display_buffer();
-          redraw_tx_display_window();
-
-          display_chat_history(&chat_buffer_state); // 🔔 is this call necessary? test without
+          redraw_typing_box();
           break;
         default:
           char key = KEYBOARD_LAYOUT[key_index];
@@ -622,7 +615,7 @@ void poll_keyboard(ChatBufferState* state) {
           tx_display_buffer_length++;
           // Serial.printf("Read buffer %ul\n", ~read_buffer);
           // Serial.printf("You pressed key_index=%d, key=\'%c\'\n", key_index, key);
-          redraw_tx_display_window(); // TODO: So adding this call makes the line break display correctly, but seems inefficient to call redraw_tx_display_window everytime - need to spend more time figuring out how drawString works and add logic here to handle line breaks w/o redraw?
+          redraw_typing_box(); // TODO: So adding this call makes the line break display correctly, but seems inefficient to call redraw_typing_box everytime - need to spend more time figuring out how drawString works and add logic here to handle line breaks w/o redraw?
           // modifier = 0; // reset modifier keys
       }
     }
@@ -637,7 +630,7 @@ void poll_keyboard(ChatBufferState* state) {
   starting a timer that calls poll_keyboard at regular intervals
 */
 void setup_keyboard_poller() {
-  Serial.println("setup_keyboard_poller() called");
+  // Serial.println("setup_keyboard_poller() called");
   switch_state = 0;
 
   // Set up SPI
@@ -668,7 +661,7 @@ static void reset_tx_display_buffer() {
   It also reprints the current contents of the tx_display_buffer.
   Usage: Called in poll_keyboard when the buffer changes and needs to be updated on the screen.
 */
-static void redraw_tx_display_window() {
+static void redraw_typing_box() {
   // Clears the typing box after message send:
   tft.fillRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_WHITE);
   tft.drawRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_RED);
