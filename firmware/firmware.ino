@@ -303,6 +303,29 @@ void write_to_dac(uint8_t address, uint16_t value) {
 
 // ------------------- Screen Behavior Utility Functions ----------------- //
 
+void _debug_print_message(message_t msg) {
+  // Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned, which time_t is on teensy
+  // Serial.print("Sender: ");
+  // Serial.println(msg.sender);
+  // Serial.print("Recipient: ");
+  // Serial.println(msg.recipient);
+  Serial.print("Text: ");
+  Serial.println(msg.text);
+  Serial.println();
+}
+
+void _debug_print_chat_history(ChatBufferState* state) {
+  for (int i = 0; i < state->chat_history_message_count; i++) {
+    _debug_print_message(state->chat_history[i]);
+  }
+}
+
+/*
+  Draws message character content (incorporating line breaks and text wrapping) in the chat history box for a given message.
+  A single message is defined as whatever text chars a user has entered into the text staging box when "send" is pressed.
+  text_start_x and text_start_y are passed in to indicate the position from which the function should begin drawing
+  the first character (i.e. the position of the top left corner of the first character).
+*/
 void draw_message_text(int length_limit, const char *text_to_draw, int text_start_x, int text_start_y, int wrap_limit) {
   int start_x = text_start_x;
   int start_y = text_start_y;
@@ -326,23 +349,6 @@ void draw_message_text(int length_limit, const char *text_to_draw, int text_star
       start_x += CHAR_WIDTH;
       chars_in_current_line++;
     }
-  }
-}
-
-void _debug_print_message(message_t msg) {
-  // Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned, which time_t is on teensy
-  // Serial.print("Sender: ");
-  // Serial.println(msg.sender);
-  // Serial.print("Recipient: ");
-  // Serial.println(msg.recipient);
-  Serial.print("Text: ");
-  Serial.println(msg.text);
-  Serial.println();
-}
-
-void _debug_print_chat_history(ChatBufferState* state) {
-  for (int i = 0; i < state->chat_history_message_count; i++) {
-    _debug_print_message(state->chat_history[i]);
   }
 }
 
