@@ -133,8 +133,8 @@ const char *KEYBOARD_LAYOUT_SYM = "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ 
 
 
 // ------------------- TFT LCD ------------------------------------------- //
-/* Initializing the display using pins assigned above, which - as a remidner - interface
-with these things:
+/* Initializing the display using pins assigned above, which - as a reminder - interfaces
+  with these things:
   - Analog-to-Digital Converter (ADC)
   - Keyboard or input device
   - TFT display with ILI9341 controller via SPI
@@ -155,7 +155,7 @@ const long BATTERY_READ_PERIOD_MS = 1000;
 // ------------------- DSP Utility functions ----------------------------- //
 /*
  Calculates the integer base 2 logarithm of x to give the position of the highest set bit
- Usage: Gets called by poll_keyboard to detect key presses (?)
+ Usage: Gets called by poll_keyboard to detect key presses
 */
 int ilog2(uint64_t x) {
   int i = 0;
@@ -236,31 +236,30 @@ void setup_receiver() {
   for (int j = 0; j < gs_len; j++) {  // iterating over Goertzel filter objects
     // The 2nd param sets the initial frequency for that filter: so 14000, 14200, 14400 etc
     initialize_goertzel(&gs[j], 15000 + (j - 5) * 200, adc_frequency); // adc_frequency is sampling freq 89.2 khz
-  } // measures amp of specific freq over some time period in a received audio signal --> bytes
+  } // Measures amp of specific freq over some time period in a received audio signal --> bytes
 
-  // set gain on charge amplifier
+  // Sets gain on charge amplifier
   set_charge_amplifier_gain(6);
 
-  // Set up ADC (for received audio signal)
+  // Sets up ADC (for received audio signal)
   adc->adc0->setAveraging(1); // no averaging
   adc->adc0->setResolution(12); // bits
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED); // we want it to be
   //adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
 
-  // Set up DMA
+  // Sets up DMA
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
-  dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2); // each time you read from adc get 2 bytes, so that's why 2x
+  dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2); // Each time you read from adc get 2 bytes, so that's why 2x
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
-  dma_ch1.attachInterrupt(&adc_buffer_full_interrupt); // when dma is done, call adc_buffer_full_interrup which is a func
+  dma_ch1.attachInterrupt(&adc_buffer_full_interrupt); // When dma is done, call adc_buffer_full_interrup which is a func
   dma_ch1.triggerAtHardwareEvent(DMAMUX_SOURCE_ADC1);
 
-  dma_ch1.enable();  // Enable the DMA channel
+  dma_ch1.enable();  // Enables the DMA channel
   adc->adc0->enableDMA();
   adc->adc0->startSingleRead(readPin_adc_0);
-  adc->adc0->startTimer(adc_frequency); // this actually determines how fast to sample signal, 
-  // and starts timer to initiate dma transfer from adc to memory
-  // once 2x buffer size bytes reached
+  // This actually determines how fast to sample the signal, and starts timer to initiate dma transfer from adc to memory once 2x buffer size bytes reached
+  adc->adc0->startTimer(adc_frequency);
 }
 
 /*
@@ -304,7 +303,7 @@ void write_to_dac(uint8_t address, uint16_t value) {
 // ------------------- Screen Behavior Utility Functions ----------------- //
 
 void _debug_print_message(message_t msg) {
-  // Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned, which time_t is on teensy
+  // Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned
   // Serial.print("Sender: ");
   // Serial.println(msg.sender);
   // Serial.print("Recipient: ");
@@ -332,19 +331,18 @@ void draw_message_text(int length_limit, const char *text_to_draw, int text_star
   int chars_in_current_line = 0;
   for (int curr_char_index = 0; curr_char_index < length_limit; curr_char_index++) {
     if (text_to_draw[curr_char_index] == '\n') {
-      // Move the cursor to the next line (adjust draw_start_y based on text size)
+      // Moves the cursor to the next line (adjust draw_start_y based on text size)
       start_x = text_start_x;
       start_y += LINE_HEIGHT;
       chars_in_current_line = 0;
     } else if (chars_in_current_line >= wrap_limit) {
-    // } else if (curr_char_index >= wrap_limit) {
       start_x = text_start_x;
       start_y += LINE_HEIGHT;
       chars_in_current_line = 1;
       tft.drawChar(start_x, start_y, text_to_draw[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
       start_x += CHAR_WIDTH;
     } else {
-      // Draw the character at the current cursor position
+      // Draws the character at the current cursor position
       tft.drawChar(start_x, start_y, text_to_draw[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
       start_x += CHAR_WIDTH;
       chars_in_current_line++;
@@ -369,7 +367,7 @@ void draw_message_text(int length_limit, const char *text_to_draw, int text_star
   - ILI9341_WHITE – Color constant for clearing the chat box background.
   - ILI9341_RED – Color constant for the chat box border.
 
-  Drawing method params:
+  Drawing method params (for reference):
   * drawString(text_to_draw, draw_start_x, draw_start_y);
   * drawRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_outline_color);
   * fillRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_fill_color);
@@ -386,7 +384,7 @@ void display_chat_history(ChatBufferState* state) {
   int curr_message_pos = CHAT_BOX_START_Y + CHAT_BOX_HEIGHT - LINE_HEIGHT - CHAT_BOX_BOTTOM_PADDING;
   int messages_to_display_count = state->chat_history_message_count - state->message_scroll_offset;
 
-  // Clear entire chat box area 
+  // Clears entire chat box area
   tft.fillRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_WHITE);
   tft.drawRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_RED);
 
@@ -449,7 +447,7 @@ void display_chat_history(ChatBufferState* state) {
 
 void add_message_to_chat_history(ChatBufferState* state, const char* message_text, const char* sender, const char* recipient) {
   message_t curr_message {
-    time(NULL), // current time
+    time(NULL), // Current time
     sender,
     recipient,
     ""
@@ -463,7 +461,7 @@ void add_message_to_chat_history(ChatBufferState* state, const char* message_tex
   curr_message.sender[MAX_NAME_LENGTH - 1] = '\0';
   curr_message.recipient[MAX_NAME_LENGTH - 1] = '\0';
 
-  // Ring buffer logic to overwrite oldest message when buffer is exceeded:
+  // Ring buffer logic to overwrite oldest message when buffer is exceeded
   state->chat_history[state->message_buffer_write_index] = curr_message;
   state->message_buffer_write_index = (state->message_buffer_write_index + 1) % MAX_CHAT_MESSAGES;
   if (state->chat_history_message_count < MAX_CHAT_MESSAGES) {
@@ -492,7 +490,7 @@ void send_message(const char* message_text) {
 void poll_keyboard(ChatBufferState* state) {
   static int modifier = 0;
 
-  // latch keyboard state into shift registers
+  // Latches keyboard state into shift registers
   // kb_load_n is an output pin which pulses a signal here from LOW to HIGH 
   // low to hi transmission lets shift reg know to record keyboard state (8 bits per registr)
   digitalWrite(kb_load_n, LOW);
@@ -500,7 +498,7 @@ void poll_keyboard(ChatBufferState* state) {
   digitalWrite(kb_load_n, HIGH);
   delayNanoseconds(5);
 
-  // read 64 bits of shift register, takes 2.63us, runs at 23 MHz
+  // Reads 64 bits of shift register, takes 2.63us, runs at 23 MHz
   // Note: bitbang to avoid taking up an SPI peripheral. Requires VERY little CPU time
   uint64_t read_buffer = 0;
   for (int bit = 0; bit < SCAN_CHAIN_LENGTH; bit++) {
@@ -511,7 +509,7 @@ void poll_keyboard(ChatBufferState* state) {
   }
   digitalWriteFast(kb_clock, LOW);
 
-  // compare results to previous one to detect new key presses
+  // Compares results to previous one to detect new key presses
   // `~` is bitwise not, flips all 0s/1s
   // `&` is bitwise and
   uint64_t new_press = ~read_buffer & switch_state; // isolates the bits where a pressed key is now unpressed to find newly pressed keys
@@ -592,8 +590,8 @@ void poll_keyboard(ChatBufferState* state) {
           tx_display_buffer[tx_display_buffer_length] = key;
           tx_display_buffer_length++;
           // Serial.printf("Read buffer %ul\n", ~read_buffer);
-          // Serial.printf("You pressed key_index=%d, key=\'%c\'\n", key_index, key);
-          redraw_typing_box(); // TODO: So adding this call makes the line break display correctly, but seems inefficient to call redraw_typing_box everytime - need to spend more time figuring out how drawString works and add logic here to handle line breaks w/o redraw?
+          Serial.printf("You pressed key_index=%d, key=\'%c\'\n", key_index, key);
+          redraw_typing_box();
           // modifier = 0; // reset modifier keys
       }
     }
@@ -610,13 +608,13 @@ void poll_keyboard(ChatBufferState* state) {
 void setup_keyboard_poller() {
   switch_state = 0;
 
-  // Set up SPI
+  // Sets up SPI
   pinMode(kb_load_n, OUTPUT);
   digitalWrite(kb_load_n, HIGH);
   pinMode(kb_clock, OUTPUT);
   pinMode(kb_data, INPUT);
 
-  // Start timer
+  // Starts timer
   if (!keyboard_poller_timer.begin([]() { poll_keyboard(&chat_buffer_state); }, keyboard_poller_period_usec)) {
     Serial.println("Failed setting up poller");
   }
@@ -625,11 +623,11 @@ void setup_keyboard_poller() {
 
 /*
   Resets the buffer that stores the text being typed on the keyboard. It clears the buffer and resets its length.
+  Keyboard will write to this, screen will display it.
   Usage: Called in setup_screen to initialize the display buffer, and in poll_keyboard to reset it after the SEND key is pressed.
 */
 static void reset_tx_display_buffer() {
-  // set up transmit display buffer. keyboard will write to this, screen will display it.
-  memset(tx_display_buffer, '\0', MAX_TEXT_LENGTH); // fill buffer with null chars ('\0')
+  memset(tx_display_buffer, '\0', MAX_TEXT_LENGTH); // Fills buffer with null chars ('\0')
   tx_display_buffer_length = 0;
 }
 
@@ -649,17 +647,17 @@ static void redraw_typing_box() {
 */
 void setup_screen() {
   pinMode(tft_led, OUTPUT);
-  digitalWrite(tft_led, HIGH); // actual thing that turns screen light on
-  screen_on = true; // global var for other stuff
+  digitalWrite(tft_led, HIGH); // Actual thing that turns screen light on
+  screen_on = true;
 
   pinMode(tft_sck, OUTPUT); // sck is clock
 
   tft.begin();
   tft.setRotation(2);
   tft.fillScreen(ILI9341_WHITE);
-  // Draws chat history boundaries:
+  // Draws chat history boundaries
   tft.drawRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_RED);
-  // Draws typing box boundaries:
+  // Draws typing box boundaries
   tft.drawRect(CHAT_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_RED);
   // Sets cursor to starting position inside typing box:
   tft.setCursor(TYPING_CURSOR_X, TYPING_CURSOR_Y);
