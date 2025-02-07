@@ -289,15 +289,23 @@ void write_to_dac(uint8_t address, uint16_t value) {
   top byte: 5-bit address, 2 "command bits", 1 dont-care
   bottom 2 bytes: 4 dont-care, 12 data bits
 */
+  Serial.print("DAC Write - Address: ");
+  Serial.print(address);
+  Serial.print(", Value: ");
+  Serial.println(value);
+
   uint8_t buf[3];
   buf[0] = (address << 3);  // bits 1 and 2 must be 0 to write.
   buf[1] = (uint8_t)(value >> 8);
   buf[2] = (uint8_t)value;
+
   SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
   digitalWrite(dac_cs, LOW);
   SPI.transfer(buf, 3);
   digitalWrite(dac_cs, HIGH);
   SPI.endTransaction();
+
+  // float frequency = (bit) ? 2.2e3 : 2.0e3;
 }
 
 // ------------------- Screen Behavior Utility Functions ----------------- //
@@ -474,7 +482,40 @@ void transmit_message() {
   // TODO: Encode/transmit to recipient device
 }
 
+/*
+  str --> sequence of voltages
+  str of chars --> 8 bits per char --> 8 voltages per char --> len(str) * 8 voltages in total
+
+  address of 0 --> writing to channel 0 of the DAC.
+  write_to_dac(address=0, val=0): DAC receives a 24-bit message that sets the output to the minimum voltage (0V)
+  write_to_dac(address=0, val=4095): DAC receives a 24-bit message that sets the output to the maximum voltage
+*/
+void encode_message(const char* message_to_encode) {
+  for (int i = 0; message_to_encode[i] != '\0'; i++) {
+    char letter = message_to_encode[i]; // letter is an unsigned char
+
+    Serial.print("Processing letter: ");
+    Serial.println(letter);
+
+    // Encode each of char's 8 bits into a corresponding frequency using msb
+    // So each char will always generate 8 frequencies
+    for (int j = 7; j >= 0; j--) {
+      int bit = (letter >> j) & 1;
+
+      // Generate voltage for bit (interrupts could disrupt the SPI transaction)
+      noInterrupts();
+      write_to_dac(0, (bit) ? 4095 : 0); // 4095 (12-bit): 111111111111
+      interrupts();
+
+      // Hold the voltage for 10 ms (bit duration) ~ baud rate of 100 bpsS
+      delayMicroseconds(10); // Change back to 10
+    }
+  }
+}
+
 void send_message(const char* message_text) {
+  encode_message(message_text);
+
   // transmit_message(message_text);
 
   add_message_to_chat_history(&chat_buffer_state, message_text, RECIPIENT_UNKEY, RECIPIENT_VOID);
@@ -537,18 +578,14 @@ void poll_keyboard(ChatBufferState* state) {
           Pressing "up" increments message_scroll_offset, which is used to determine which
           message should be displayed at the bottom of the history box. Any older messages are just
           redrawn above that message, and any content that exceeds the heigh of the box should be cut 
-          off anyway.
+          off anyway. Note: message_scroll_offset should never exceed (chat_history_message_count - 1) 
+          even if the user keeps pressing 'up'
           if (message_scroll_offset == chat_history_message_count - 1), that means the oldest message is
           currently displayed at the bottom of the history box
           */
           if (state->message_scroll_offset < state->chat_history_message_count - 1) {
             state->message_scroll_offset++;
-            Serial.printf("✅ Scroll successful");
             display_chat_history(&chat_buffer_state);
-          } else {
-            // message_scroll_offset should never exceed (chat_history_message_count - 1)
-            // even if the user keeps pressing up
-            Serial.println("❌ Scrolling up not allowed");
           }
           break;
         case DOWN_KEY_INDEX:
@@ -556,8 +593,6 @@ void poll_keyboard(ChatBufferState* state) {
           if (state->message_scroll_offset > 0) {
             state->message_scroll_offset--;
             display_chat_history(&chat_buffer_state);
-          } else {
-            Serial.println("❌ Scrolling down not allowed");
           }
           break;
         case BACK_KEY_INDEX:
@@ -721,7 +756,8 @@ void setup() {
   Wire.begin();              // I2C communication bus for charge amplifier
   analogReadResolution(12);  // specifies 12-bit resolution
 
-  test_incoming_message.begin(incoming_message_callback, 10000000);
+  // test_incoming_message.begin(incoming_message_callback, 10000000);
+  // encode_message("Hello, World!");
 
   setup_screen();
 
@@ -739,9 +775,9 @@ void setup() {
   Usage: Runs repeatedly after setup() completes, handling ongoing tasks.
 */
 void loop() {
-  // uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3); // tryna make a number between 0 and 2^12 i.e. 12 bits
+  uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3); // tryna make a number between 0 and 2^12 i.e. 12 bits
 
-  // write_to_dac(0, val);
+  // encode_message("Hello");
 
   poll_battery();
 }
