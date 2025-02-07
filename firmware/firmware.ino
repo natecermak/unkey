@@ -248,7 +248,10 @@ void setup_receiver() {
   //adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
 
   // Sets up DMA
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wstrict-aliasing"
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
+  #pragma GCC diagnostic pop
   dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2); // Each time you read from adc get 2 bytes, so that's why 2x
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
@@ -454,12 +457,8 @@ void display_chat_history(ChatBufferState* state) {
 }
 
 void add_message_to_chat_history(ChatBufferState* state, const char* message_text, const char* sender, const char* recipient) {
-  message_t curr_message {
-    time(NULL), // Current time
-    sender,
-    recipient,
-    ""
-  };
+  message_t curr_message;
+  curr_message.timestamp = time(NULL);
 
   // Have to copy into curr_message like this bc message_text won't be available in mem
   strncpy(curr_message.text, message_text, MAX_TEXT_LENGTH - 1);
@@ -529,7 +528,7 @@ void send_message(const char* message_text) {
   It also uses ilog2() to identify the index of the pressed key.
 */
 void poll_keyboard(ChatBufferState* state) {
-  static int modifier = 0;
+  // static int modifier = 0;
 
   // Latches keyboard state into shift registers
   // kb_load_n is an output pin which pulses a signal here from LOW to HIGH 
@@ -756,7 +755,7 @@ void setup() {
   Wire.begin();              // I2C communication bus for charge amplifier
   analogReadResolution(12);  // specifies 12-bit resolution
 
-  // test_incoming_message.begin(incoming_message_callback, 10000000);
+  test_incoming_message.begin(incoming_message_callback, 10000000);
   // encode_message("Hello, World!");
 
   setup_screen();
@@ -775,7 +774,7 @@ void setup() {
   Usage: Runs repeatedly after setup() completes, handling ongoing tasks.
 */
 void loop() {
-  uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3); // tryna make a number between 0 and 2^12 i.e. 12 bits
+  // uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3); // tryna make a number between 0 and 2^12 i.e. 12 bits
 
   // encode_message("Hello");
 
