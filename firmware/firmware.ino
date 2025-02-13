@@ -79,7 +79,7 @@ const int tft_cs = 6;
 const int tft_mosi = 11;
 const int tft_sck = 13;
 
-const int tx_power_en = 8;
+const int tx_power_en = 8; // this pin enables power to amp that in turn powers tx signal
 const int xdcr_sw = 7;
 const int dac_cs = 10;
 
@@ -477,27 +477,39 @@ void add_message_to_chat_history(ChatBufferState* state, const char* message_tex
 
 }
 
-void transmit_message() {
-  // TODO: Encode/transmit to recipient device
+/*
+Transmits the SOH (Start of Heading) ASCII control character via the DAC.
+*/
+void transmit_preamble() {
+  Serial.println("Starting transmission");
+  uint8_t soh_in_binary = 0x01; // SOH control character in ASCII
+  for (int bit_index = 7; bit_index >= 0; bit_index--) {
+    int bit = (soh_in_binary >> bit_index) & 1;
+    noInterrupts();
+    write_to_dac(0, (bit) ? 4095 : 0);
+    interrupts();
+    delay(10);
+  }
 }
 
 /*
-  str --> sequence of voltages
-  str of chars --> 8 bits per char --> 8 voltages per char --> len(str) * 8 voltages in total
+str --> sequence of voltages
+str of chars --> 8 bits per char --> 8 voltages per char --> len(str) * 8 voltages in total
 
-  address of 0 --> writing to channel 0 of the DAC.
-  write_to_dac(address=0, val=0): DAC receives a 24-bit message that sets the output to the minimum voltage (0V)
-  write_to_dac(address=0, val=4095): DAC receives a 24-bit message that sets the output to the maximum voltage
+address of 0 --> writing to channel 0 of the DAC.
+write_to_dac(address=0, val=0): DAC receives a 24-bit message that sets the output to the minimum voltage (0V)
+write_to_dac(address=0, val=4095): DAC receives a 24-bit message that sets the output to the maximum voltage
 */
 void encode_message(const char* message_to_encode) {
   for (int i = 0; message_to_encode[i] != '\0'; i++) {
+    Serial.print("Processing letter: ");
+    Serial.println(message_to_encode[i]);
+    
+    write_to_dac(0, (4095/2));
+    delayMicroseconds(10000);
     char letter = message_to_encode[i]; // letter is an unsigned char
 
-    Serial.print("Processing letter: ");
-    Serial.println(letter);
-
-    // Encode each of char's 8 bits into a corresponding frequency using msb
-    // So each char will always generate 8 frequencies
+    // Encode each of char's 8 bits into a corresponding frequency starting with msb
     for (int j = 7; j >= 0; j--) {
       int bit = (letter >> j) & 1;
 
@@ -506,19 +518,20 @@ void encode_message(const char* message_to_encode) {
       write_to_dac(0, (bit) ? 4095 : 0); // 4095 (12-bit): 111111111111
       interrupts();
 
-      // Hold the voltage for 10 ms (bit duration) ~ baud rate of 100 bpsS
-      delayMicroseconds(10); // Change back to 10
+      // Hold the voltage for 10 ms (bit duration) i.e. baud rate of 100 bps
+      delayMicroseconds(10000);
     }
   }
 }
 
-void send_message(const char* message_text) {
+void transmit_message(const char* message_text) {
+  transmit_preamble();
   encode_message(message_text);
+}
 
-  // transmit_message(message_text);
-
+void send_message(const char* message_text) {
+  transmit_message(message_text);
   add_message_to_chat_history(&chat_buffer_state, message_text, RECIPIENT_UNKEY, RECIPIENT_VOID);
-
   display_chat_history(&chat_buffer_state);
 }
 
@@ -756,14 +769,10 @@ void setup() {
   analogReadResolution(12);  // specifies 12-bit resolution
 
   test_incoming_message.begin(incoming_message_callback, 10000000);
-  // encode_message("Hello, World!");
-
   setup_screen();
-
   setup_receiver();
-
   setup_transmitter();
-
+  transmit_message("Hello!");
   setup_keyboard_poller();
 
   Serial.println("setup() complete\n============================");
@@ -775,8 +784,6 @@ void setup() {
 */
 void loop() {
   // uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3); // tryna make a number between 0 and 2^12 i.e. 12 bits
-
-  // encode_message("Hello");
 
   poll_battery();
 }
