@@ -292,11 +292,6 @@ void write_to_dac(uint8_t address, uint16_t value) {
   top byte: 5-bit address, 2 "command bits", 1 dont-care
   bottom 2 bytes: 4 dont-care, 12 data bits
 */
-  Serial.print("DAC Write - Address: ");
-  Serial.print(address);
-  Serial.print(", Value: ");
-  Serial.println(value);
-
   uint8_t buf[3];
   buf[0] = (address << 3);  // bits 1 and 2 must be 0 to write.
   buf[1] = (uint8_t)(value >> 8);
@@ -478,18 +473,23 @@ void add_message_to_chat_history(ChatBufferState* state, const char* message_tex
 }
 
 /*
-Transmits the SOH (Start of Heading) ASCII control character via the DAC.
+  TODO: Transmits the SOH (Start of Heading) ASCII control character via the DAC?
+  For now just transmits a tone at 4kHz
 */
 void transmit_preamble() {
   Serial.println("Starting transmission");
-  uint8_t soh_in_binary = 0x01; // SOH control character in ASCII
-  for (int bit_index = 7; bit_index >= 0; bit_index--) {
-    int bit = (soh_in_binary >> bit_index) & 1;
+  int frequency = 600;
+  float w = 2 * PI * frequency;
+  unsigned long tone_start = micros();
+  while (micros() - tone_start < 500000) { // run for 500,000 µs (500 ms)
+    float t = (micros() - tone_start) / 1000000.0; // t is elapsed time in seconds
+    uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 4095);
     noInterrupts();
-    write_to_dac(0, (bit) ? 4095 : 0);
+    write_to_dac(0, dac_value);
     interrupts();
-    delay(10);
+    delayMicroseconds(200);
   }
+  delayMicroseconds(1000000); // Testing
 }
 
 /*
@@ -504,22 +504,26 @@ void encode_message(const char* message_to_encode) {
   for (int i = 0; message_to_encode[i] != '\0'; i++) {
     Serial.print("Processing letter: ");
     Serial.println(message_to_encode[i]);
-    
-    write_to_dac(0, (4095/2));
-    delayMicroseconds(10000);
+
     char letter = message_to_encode[i]; // letter is an unsigned char
 
     // Encode each of char's 8 bits into a corresponding frequency starting with msb
     for (int j = 7; j >= 0; j--) {
       int bit = (letter >> j) & 1;
+      float w = (bit) ? (2 * PI * 2200) : (2 * PI * 2000); // w is the angular frequency, wherein w = 2 * pi * f
+      unsigned long bit_start = micros(); // start time for the current bit period
 
-      // Generate voltage for bit (interrupts could disrupt the SPI transaction)
-      noInterrupts();
-      write_to_dac(0, (bit) ? 4095 : 0); // 4095 (12-bit): 111111111111
-      interrupts();
-
-      // Hold the voltage for 10 ms (bit duration) i.e. baud rate of 100 bps
-      delayMicroseconds(10000);
+      // Generate a sine wave for current bit for 10 ms
+      while (micros() - bit_start < 500000) { // Testing only
+      // while (micros() - bit_start < 10000) { // while current_time - bit_period start is < 10 ms
+        float t = (micros() - bit_start) / 1000000.0; // current bit period elapsed time, converted to seconds
+        uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 4095); // get the phase angle at time t and scale/cast for 12 bit DAC
+        noInterrupts();
+        write_to_dac(0, dac_value);
+        interrupts();
+        delayMicroseconds(200);
+      }
+      delayMicroseconds(1000000); // Testing
     }
   }
 }
@@ -768,11 +772,16 @@ void setup() {
   Wire.begin();              // I2C communication bus for charge amplifier
   analogReadResolution(12);  // specifies 12-bit resolution
 
-  test_incoming_message.begin(incoming_message_callback, 10000000);
+  // test_incoming_message.begin(incoming_message_callback, 10000000);
   setup_screen();
   setup_receiver();
   setup_transmitter();
-  transmit_message("Hello!");
+  transmit_message("Hi!");
+  /*
+  01001000
+  01101001
+  00100001
+  */
   setup_keyboard_poller();
 
   Serial.println("setup() complete\n============================");
@@ -785,5 +794,5 @@ void setup() {
 void loop() {
   // uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3); // tryna make a number between 0 and 2^12 i.e. 12 bits
 
-  poll_battery();
+  // poll_battery();
 }
