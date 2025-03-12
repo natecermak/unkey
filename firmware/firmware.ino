@@ -87,11 +87,11 @@ const int dac_cs = 10;
 const int battery_monitor = 20;
 
 // ------------------- ADC, DMA, and Goertzel filters -------------------- //
-/*
-- ADC is set up to sample an analog signal at 81.92 kHz
-- DMA is configured to transfer ADC samples into the dma_adc_buff1 buffer
-- Goertzel algo is initialized to analyze a signal for up to 10 diff frequencies
-*/
+/**
+ * - ADC is set up to sample an analog signal at 81.92 kHz
+ * - DMA is configured to transfer ADC samples into the dma_adc_buff1 buffer
+ * - Goertzel algo is initialized to analyze a signal for up to 10 diff frequencies
+ */
 
 // Used to interact with ADC hardware for configuring/reading analog signals:
 ADC *adc = new ADC();
@@ -145,13 +145,14 @@ const char *KEYBOARD_LAYOUT_SYM = "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ 
 
 
 // ------------------- TFT LCD ------------------------------------------- //
-/* Initializing the display using pins assigned above, which - as a reminder - interfaces
-  with these things:
-  - Analog-to-Digital Converter (ADC)
-  - Keyboard or input device
-  - TFT display with ILI9341 controller via SPI
-  - DAC, power control, and a battery monitor
-*/
+/**
+ * Initializing the display using pins assigned above, which - as a reminder - interfaces with these things:
+ * - Analog-to-Digital Converter (ADC)
+ * - Keyboard or input device
+ * - TFT display with ILI9341 controller via SPI
+ * - DAC, power control, and a battery monitor
+ */
+
 // TODO: this is too low, for testing only:
 bool screen_on;
 const int screen_timeout_ms = 10000;
@@ -167,10 +168,10 @@ long time_of_last_battery_read_ms;
 const long BATTERY_READ_PERIOD_MS = 1000;
 
 // ------------------- DSP Utility functions ----------------------------- //
-/*
- Calculates the integer base 2 logarithm of x to give the position of the highest set bit
- Usage: Gets called by poll_keyboard to detect key presses
-*/
+/**
+ * Calculates the integer base 2 logarithm of x to give the position of the highest set bit.
+ * Usage: Gets called by poll_keyboard to detect key presses
+ */
 int ilog2(uint64_t x) {
   int i = 0;
   while (x) {
@@ -180,32 +181,30 @@ int ilog2(uint64_t x) {
   return i;
 }
 
-/*
-  Sets the gain on a charge amplifier by writing a specific value to an I2C device, a charge amplifier
-  (controlled by gain_index).
-  It shifts 1U left by gain_index to generate a specific binary pattern and writes this value to the amplifier's address.
-  Usage: Called in setup_receiver to configure the amplifier gain
-*/
+/**
+ * Sets the gain on a charge amplifier by writing a specific value to an I2C device, a charge amplifier (controlled by gain_index).
+ * It shifts 1U left by gain_index to generate a specific binary pattern and writes this value to the amplifier's address.
+ * Usage: Called in setup_receiver to configure the amplifier gain
+ */
 void set_charge_amplifier_gain(uint8_t gain_index) {
   Wire.beginTransmission(adg728_i2c_address);
   Wire.write(1U << gain_index);
   Wire.endTransmission();
 }
 
-/*
-  Enables/disables transmission power by writing high or low to the tx_power_en pin
-  Usage: Used in setup_transmitter to turn on the power before transmitting.
-*/
+/**
+ * Enables/disables transmission power by writing high or low to the tx_power_en pin.
+ * Usage: Used in setup_transmitter to turn on the power before transmitting.
+ */
 inline void set_tx_power_enable(bool enable) {
   digitalWriteFast(tx_power_en, (enable) ? HIGH : LOW);
 }
 
-/*
-  Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters
-  and prints frequency domain data
-  Analog signals (voltages) --> digital values that can be processed by da Teensy
-  Usage: Attached to a DMA interrupt in setup_receiver and called automatically when the buffer fills up.
-*/
+/**
+ * Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters and prints frequency domain data.
+ * Analog signals (voltages) --> digital values that can be processed by da Teensy
+ * Usage: Attached to a DMA interrupt in setup_receiver and called automatically when the buffer fills up.
+ */
 void adc_buffer_full_interrupt() {
   dma_ch1.clearInterrupt();
   // mempcy copies a block of memory from one location to another:
@@ -215,10 +214,9 @@ void adc_buffer_full_interrupt() {
   // Re-enables the DMA channel for next read:
   dma_ch1.enable();
 
-  /*
-    Processes data:
-    Uses Goertzel algorithm to analyze the frequency content of a series of ADC samples
-  */
+  /**
+   * Processes data: uses Goertzel algorithm to analyze the frequency content of a series of ADC samples
+   */
   if (print_ctr++ % SCAN_CHAIN_LENGTH == 0) {
     for (size_t i = 0; i < buffer_size; i++) {
       //Serial.printf("%d\n", adc_buffer_copy[i]);
@@ -237,18 +235,15 @@ void adc_buffer_full_interrupt() {
   }
 }
 
-/*
-  Configures the system to receive data: initializes the ADC,
-  configures Goertzel filters for frequency analysis, sets the gain on the charge amplifier,
-  sets up DMA channel for ADC to send data to a buffer super duper efficiently.
-  Direct Memory Access (DMA) --> data gets moved in/out of system memory w/o CPU involvement, so it's very efficient
-  Charge amplifier --> converts super low charge signals to proportional voltage signals
-*/
+/**
+ * Configures the system to receive data: initializes the ADC, configures Goertzel filters for frequency analysis,
+ * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to a buffer super duper efficiently.
+ */
 void setup_receiver() {
   // Sets readPin_adc_0 as the input pin:
   pinMode(readPin_adc_0, INPUT);
 
-  // Initialize Goertzel filters (TODO: Hardcoded frequencies here):
+  // Initializes Goertzel filters (TODO: Hardcoded frequencies here):
   for (int j = 0; j < gs_len; j++) {
     // The 2nd param sets the initial frequency for that filter: so 14000, 14200, 14400 etc
     initialize_goertzel(&gs[j], 15000 + (j - 5) * 200, adc_frequency);
@@ -257,17 +252,15 @@ void setup_receiver() {
   // Sets gain on charge amplifier:
   set_charge_amplifier_gain(6);
 
-  // Sets up ADC (for received audio signal)
+  // Sets up ADC (for received audio signal):
   adc->adc0->setAveraging(1); // no averaging
   adc->adc0->setResolution(12); // bits
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
   //adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
 
-  // Sets up DMA
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+  // Sets up DMA:
+  // Note: The following line raises a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but in this case this warning can be safely ignored
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
-  #pragma GCC diagnostic pop
   // Each time you read from adc you get 2 bytes, so that's why 2x:
   dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
   dma_ch1.interruptAtCompletion();
@@ -284,35 +277,33 @@ void setup_receiver() {
   adc->adc0->startTimer(adc_frequency);
 }
 
-/*
-  Sets up the transmitter by configuring output pins, enabling transmission power, and
-  writing initial values to a DAC (Digital-to-Analog Converter). Configures gain and voltage references for the DAC.
-*/
+/**
+ * Sets up the transmitter by configuring output pins, enabling transmission power, and writing initial values to a DAC (Digital-to-Analog Converter).
+ * Configures gain and voltage references for the DAC.
+ */
 void setup_transmitter() {
   pinMode(tx_power_en, OUTPUT);
   pinMode(xdcr_sw, OUTPUT);
   pinMode(dac_cs, OUTPUT);
   digitalWrite(dac_cs, HIGH);
+
   // TODO: FOR TESTING ONLY:
   set_tx_power_enable(true);  // tested: works
   delay(100);                 // wait for power to boot
-
   write_to_dac(0xA, 1U << 8);  // A is address for config, 8th bit is gain. set to gain=2
   write_to_dac(8, 1);          // 8 is address for VREF, 1 means use internal ref
 }
 
-/*
-  Sends data to a DAC via SPI: prepares a 3-byte buffer with an address and a 12-bit value,
-  then sends the data using SPI communication.
-*/
+/**
+ * Sends data to a DAC via SPI: prepares a 3-byte buffer with an address and a 12-bit value, then sends the data using SPI communication.
+ * MCP48CXDX1 -- 24-bit messages.
+ * top byte: 5-bit address, 2 "command bits", 1 dont-care
+ * bottom 2 bytes: 4 dont-care, 12 data bits
+ */
 void write_to_dac(uint8_t address, uint16_t value) {
-  /*
-  MCP48CXDX1 -- 24-bit messages.
-  top byte: 5-bit address, 2 "command bits", 1 dont-care
-  bottom 2 bytes: 4 dont-care, 12 data bits
-*/
   uint8_t buf[3];
-  buf[0] = (address << 3);  // bits 1 and 2 must be 0 to write.
+  // Bits 1 and 2 must be 0 to write:
+  buf[0] = (address << 3);
   buf[1] = (uint8_t)(value >> 8);
   buf[2] = (uint8_t)value;
 
@@ -342,12 +333,12 @@ void _debug_print_chat_history(ChatBufferState* state) {
   }
 }
 
-/*
-  Draws message character content (incorporating line breaks and text wrapping) in the chat history box for a given message.
-  A single message is defined as whatever text chars a user has entered into the text staging box when "send" is pressed.
-  text_start_x and text_start_y are passed in to indicate the position from which the function should begin drawing
-  the first character (i.e. the position of the top left corner of the first character).
-*/
+/**
+ * Draws message character content (incorporating line breaks and text wrapping) in the chat history box for a given message.
+ * A single message is defined as whatever text chars a user has entered into the text staging box when "send" is pressed.
+ * text_start_x and text_start_y are passed in to indicate the position from which the function should begin drawing
+ * the first character (i.e. the position of the top left corner of the first character).
+ */
 void draw_message_text(int length_limit, const char *text_to_draw, int text_start_x, int text_start_y, int wrap_limit) {
   int start_x = text_start_x;
   int start_y = text_start_y;
@@ -373,29 +364,28 @@ void draw_message_text(int length_limit, const char *text_to_draw, int text_star
   }
 }
 
-/*
-  Clears the chat history display area and redraws messages from chat_history, starting with the message at
-  the currently set scroll position (with progressively older messages displayed above).
-  Redrawing is accomplished by first calculating the needed screen space for each message, factoring in
-  formatting rules, and also obscures any message content that appears outside the chat history box bounds.
-
-  Global variables used:
-  - MAX_CHAT_MESSAGES – The size of the circular buffer for storing chat messages.
-  - CHAT_BOX_START_Y – The starting vertical position of the chat box on the display.
-  - CHAT_BOX_HEIGHT – The height of the chat box on the display.
-  - LINE_HEIGHT – The height of a single line of text.
-  - CHAT_BOX_BOTTOM_PADDING – Padding below the last line in the chat box.
-  - CHAT_BOX_START_X – The starting horizontal position of the chat box.
-  - CHAT_BOX_WIDTH – The width of the chat box.
-  - ILI9341_WHITE – Color constant for clearing the chat box background.
-  - ILI9341_RED – Color constant for the chat box border.
-
-  Drawing method params (for reference):
-  * drawString(text_to_draw, draw_start_x, draw_start_y);
-  * drawRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_outline_color);
-  * fillRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_fill_color);
-
-*/
+/**
+ * Clears the chat history display area and redraws messages from chat_history, starting with the message at
+ * the currently set scroll position (with progressively older messages displayed above).
+ * Redrawing is accomplished by first calculating the needed screen space for each message, factoring in
+ * formatting rules, and also obscures any message content that appears outside the chat history box bounds.
+ *
+ * Global variables used:
+ * MAX_CHAT_MESSAGES – The size of the circular buffer for storing chat messages.
+ * CHAT_BOX_START_Y – The starting vertical position of the chat box on the display.
+ * CHAT_BOX_HEIGHT – The height of the chat box on the display.
+ * LINE_HEIGHT – The height of a single line of text.
+ * CHAT_BOX_BOTTOM_PADDING – Padding below the last line in the chat box.
+ * CHAT_BOX_START_X – The starting horizontal position of the chat box.
+ * CHAT_BOX_WIDTH – The width of the chat box.
+ * ILI9341_WHITE – Color constant for clearing the chat box background.
+ * ILI9341_RED – Color constant for the chat box border.
+ *
+ * Drawing method params (for reference):
+ * drawString(text_to_draw, draw_start_x, draw_start_y);
+ * drawRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_outline_color);
+ * fillRect(rect_start_x, rect_start_y, rect_width, rect_height, rect_fill_color);
+ */
 void display_chat_history(ChatBufferState* state) {
   /*
     Note that curr_message_index points to the current message in the buffer being displayed or accessed, adjusted for the user's scroll position.
@@ -472,11 +462,15 @@ void display_chat_history(ChatBufferState* state) {
   }
 }
 
+/**
+ * Copies the provided message text, sender, and recipient into the chat history buffer,
+ * updates the write index, and increments the message count (up to a maximum).
+ */
 void add_message_to_chat_history(ChatBufferState* state, const char* message_text, const char* sender, const char* recipient) {
   message_t curr_message;
   curr_message.timestamp = time(NULL);
 
-  // Have to copy into curr_message like this bc message_text won't be available in mem
+  // Have to copy into curr_message like this bc message_text won't be available in mem:
   strncpy(curr_message.text, message_text, MAX_TEXT_LENGTH - 1);
   strncpy(curr_message.sender, sender, MAX_NAME_LENGTH - 1);
   strncpy(curr_message.recipient, recipient, MAX_NAME_LENGTH - 1);
@@ -548,22 +542,26 @@ void encode_message(const char* message_to_encode) {
   }
 }
 
-void transmit_message(const char* message_text) {
-  transmit_preamble();
-  encode_message(message_text);
-}
-
+/**
+ * This function packetizes the given message by adding protocol-specific header and footer bytes,
+ * transmits the resulting packet using predefined transmission parameters (e.g., 2000 Hz for a 0 bit,
+ * 2200 Hz for a 1 bit, with a 10 ms bit period), and then logs the original message into the chat history,
+ * then redraws the display.
+ */
 void send_message(const char* message_text) {
-  transmit_message(message_text);
+  char transmit_buffer[MAX_PACKET_SIZE];
+  packetize_message(message_text, transmit_buffer);
+  tx_parameters_t params = {2000, 2200, 10000};
+  transmit_message(transmit_buffer, params);
   add_message_to_chat_history(&chat_buffer_state, message_text, RECIPIENT_UNKEY, RECIPIENT_VOID);
   display_chat_history(&chat_buffer_state);
 }
 
-/*
-  Reads the state of a keyboard by polling a shift register connected to the keyboard’s data and clock lines.
-  It detects new key presses, updates the screen, and processes specific keys like CAPS, SYM, and SEND.
-  It also uses ilog2() to identify the index of the pressed key.
-*/
+/**
+ * Reads the state of a keyboard by polling a shift register connected to the keyboard’s data and clock lines.
+ * It detects new key presses, updates the screen, and processes specific keys like CAPS, SYM, and SEND.
+ * It also uses ilog2() to identify the index of the pressed key.
+ */
 void poll_keyboard(ChatBufferState* state) {
   // static int modifier = 0;
 
@@ -670,10 +668,10 @@ void poll_keyboard(ChatBufferState* state) {
   }
 }
 
-/*
-  Configures the keyboard polling mechanism by setting up input/output pins and
-  starting a timer that calls poll_keyboard at regular intervals
-*/
+/**
+ * Configures the keyboard polling mechanism by setting up input/output pins and starting a timer that calls
+ * poll_keyboardat regular intervals.
+ */
 void setup_keyboard_poller() {
   switch_state = 0;
 
@@ -690,31 +688,29 @@ void setup_keyboard_poller() {
 
 }
 
-/*
-  Resets the buffer that stores the text being typed on the keyboard. It clears the buffer and resets its length.
-  Keyboard will write to this, screen will display it.
-  Usage: Called in setup_screen to initialize the display buffer, and in poll_keyboard to reset it after the SEND key is pressed.
-*/
+/**
+ * Resets the buffer that stores the text being typed on the keyboard. It clears the buffer and resets its length.
+ * Keyboard will write to this, screen will display it.
+ */
 static void reset_tx_display_buffer() {
   memset(tx_display_buffer, '\0', MAX_TEXT_LENGTH);
   // Fills buffer with null chars ('\0'):
   tx_display_buffer_length = 0;
 }
 
-/*
-  Clears the display area where typed text is shown and redraws the boundary of the text box.
-  It also reprints the current contents of the tx_display_buffer.
-  Usage: Called in poll_keyboard when the buffer changes and needs to be updated on the screen.
-*/
+/**
+ * Clears the display area where typed text is shown and redraws the boundary of the text box.
+ * It also reprints the current contents of the tx_display_buffer.
+ */
 static void redraw_typing_box() {
   tft.fillRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_WHITE);
   tft.drawRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_RED);
   draw_message_text(tx_display_buffer_length, tx_display_buffer, TYPING_CURSOR_X, TYPING_CURSOR_Y, SEND_WRAP_LIMIT);
 }
 
-/*
-  Initializes the TFT screen, sets the screen orientation, clears the screen, and draws some basic UI elements
-*/
+/**
+ * Initializes the TFT screen, sets the screen orientation, clears the screen, and draws some basic UI elements.
+ */
 void setup_screen() {
   pinMode(tft_led, OUTPUT);
   // Responsible for turning screen light on:
@@ -736,18 +732,17 @@ void setup_screen() {
   reset_tx_display_buffer();
 }
 
-/*
-  Usage: Used in poll_battery to display the current battery level on the screen.
-*/
+/**
+ * Used in poll_battery to display the current battery level on the screen.
+ */
 inline float read_battery_voltage() {
   // 2.0 for 1:1 voltage divider, 3.3V is max ADC voltage, and ADC is 12-bit (4096 values)
   return 2.0 * analogRead(battery_monitor) * 3.3 / 4096;
 }
 
-/*
-  Periodically reads and displays the battery voltage on the screen.
-  Usage: Called in loop to update the battery status, and in setup_screen to initialize the display.
-*/
+/**
+ * Periodically reads and displays the battery voltage on the screen.
+ */
 void poll_battery() {
   if (millis() - time_of_last_battery_read_ms > BATTERY_READ_PERIOD_MS) {
     time_of_last_battery_read_ms += BATTERY_READ_PERIOD_MS;
@@ -762,9 +757,9 @@ void poll_battery() {
   }
 }
 
-/*
-  Currently used to simulated staggered incoming messages
-*/
+/**
+ * Currently used to simulated staggered incoming messages.
+ */
 int incoming_message_count = 0;
 IntervalTimer test_incoming_message;
 void incoming_message_callback() {
@@ -777,11 +772,11 @@ void incoming_message_callback() {
   }
 }
 
-/*
-  The main/top-level setup function that initializes the serial communication, SPI, and I2C;
-  calls other setup functions to configure the screen, receiver, transmitter, and keyboard poller.
-  Usage: The first function called in the program to initialize all components.
-*/
+/**
+ * The main/top-level setup function that initializes the serial communication, SPI, and I2C;
+ * calls other setup functions to configure the screen, receiver, transmitter, and keyboard poller.
+ * Usage: The first function called in the program to initialize all components.
+ */
 void setup() {
   // Initializes serial communication with Teensy at baud rate of 9600 bps:
   Serial.begin(9600);
@@ -801,16 +796,14 @@ void setup() {
   setup_screen();
   setup_receiver();
   setup_transmitter();
-  // transmit_message("Hi!");
   setup_keyboard_poller();
 
   Serial.println("setup() complete\n============================");
 }
 
-/*
-  Continuously polls the battery voltage and updates the display with batt charge level.
-  Usage: Runs repeatedly after setup() completes, handling ongoing tasks.
-*/
+/**
+ * Continuously polls the battery voltage and updates the display with batt charge level.
+ */
 void loop() {
   // uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3); // tryna make a number between 0 and 2^12 i.e. 12 bits
 
