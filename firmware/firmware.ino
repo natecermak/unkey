@@ -481,15 +481,13 @@ void transmit_preamble() {
   int frequency = 600;
   float w = 2 * PI * frequency;
   unsigned long tone_start = micros();
-  while (micros() - tone_start < 500000) { // run for 500,000 µs (500 ms)
+  while (micros() - tone_start < 10000) {
     float t = (micros() - tone_start) / 1000000.0; // t is elapsed time in seconds
-    uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 4095);
+    uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 409);
     noInterrupts();
     write_to_dac(0, dac_value);
     interrupts();
-    delayMicroseconds(200);
   }
-  delayMicroseconds(1000000); // Testing
 }
 
 /*
@@ -501,6 +499,9 @@ write_to_dac(address=0, val=0): DAC receives a 24-bit message that sets the outp
 write_to_dac(address=0, val=4095): DAC receives a 24-bit message that sets the output to the maximum voltage
 */
 void encode_message(const char* message_to_encode) {
+  unsigned long totalBitTime = 0;
+  unsigned long bitCount = 0;
+
   for (int i = 0; message_to_encode[i] != '\0'; i++) {
     Serial.print("Processing letter: ");
     Serial.println(message_to_encode[i]);
@@ -514,16 +515,13 @@ void encode_message(const char* message_to_encode) {
       unsigned long bit_start = micros(); // start time for the current bit period
 
       // Generate a sine wave for current bit for 10 ms
-      while (micros() - bit_start < 500000) { // Testing only
-      // while (micros() - bit_start < 10000) { // while current_time - bit_period start is < 10 ms
+      while (micros() - bit_start < 10000) { // while current_time - bit_period start is < 10 ms
         float t = (micros() - bit_start) / 1000000.0; // current bit period elapsed time, converted to seconds
-        uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 4095); // get the phase angle at time t and scale/cast for 12 bit DAC
+        uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 409); // get the phase angle at time t and scale/cast for 12 bit DAC
         noInterrupts();
         write_to_dac(0, dac_value);
         interrupts();
-        delayMicroseconds(200);
       }
-      delayMicroseconds(1000000); // Testing
     }
   }
 }
@@ -772,7 +770,7 @@ void setup() {
   Wire.begin();              // I2C communication bus for charge amplifier
   analogReadResolution(12);  // specifies 12-bit resolution
 
-  // test_incoming_message.begin(incoming_message_callback, 10000000);
+  test_incoming_message.begin(incoming_message_callback, 10000000);
   setup_screen();
   setup_receiver();
   setup_transmitter();
@@ -794,5 +792,5 @@ void setup() {
 void loop() {
   // uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3); // tryna make a number between 0 and 2^12 i.e. 12 bits
 
-  // poll_battery();
+  poll_battery();
 }
