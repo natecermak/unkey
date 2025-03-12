@@ -79,7 +79,8 @@ const int tft_cs = 6;
 const int tft_mosi = 11;
 const int tft_sck = 13;
 
-const int tx_power_en = 8; // this pin enables power to amp that in turn powers tx signal
+// This pin enables power to amp that in turn powers tx signal:
+const int tx_power_en = 8;
 const int xdcr_sw = 7;
 const int dac_cs = 10;
 
@@ -91,28 +92,39 @@ const int battery_monitor = 20;
 - DMA is configured to transfer ADC samples into the dma_adc_buff1 buffer
 - Goertzel algo is initialized to analyze a signal for up to 10 diff frequencies
 */
-ADC *adc = new ADC();  // will be used to interact with ADC hardware for configuring/reading analog signals
-DMAChannel dma_ch1;    // will be used to manage transfer of data between ADC and memory using direct memory access (doesn't use CPU => more efficient)
 
-const uint32_t adc_frequency = 81920;                                                     // ADC will sample at freq of 81.92 kHz
-const uint32_t buffer_size = 10240;                                                       // size of buffer where ADC data will be stored
-DMAMEM static volatile uint16_t __attribute__((aligned(32))) dma_adc_buff1[buffer_size];  // creates dma_adc_buff1 buffer
-uint16_t adc_buffer_copy[buffer_size];                                                    // makes a copy of buffer(?)
+// Used to interact with ADC hardware for configuring/reading analog signals:
+ADC *adc = new ADC();
+// Used to manage transfer of data between ADC and memory using direct memory access (doesn't use CPU => more efficient):
+DMAChannel dma_ch1;
+
+// ADC will sample at freq of 81.92 kHz:
+const uint32_t adc_frequency = 81920;
+// Size of buffer where ADC data will be stored:
+const uint32_t buffer_size = 10240;
+// Creates dma_adc_buff1 buffer:
+DMAMEM static volatile uint16_t __attribute__((aligned(32))) dma_adc_buff1[buffer_size];
+// Makes a copy of buffer:
+uint16_t adc_buffer_copy[buffer_size];
 
 uint8_t print_ctr = 0;
 const uint8_t gs_len = 10;
-goertzel_state gs[gs_len];  // gs is an array that will store state for the Goertzel algo - each goertzel_state obj holds data to compute G algo for that frequency
+// gs is an array that will store state for the Goertzel algo - each goertzel_state obj holds data to compute G algo for that frequency:
+goertzel_state gs[gs_len];
 
 // ------------------- Charge amplifier gain ------------------------------ //
 const int adg728_i2c_address = 76;
 
 // ------------------- Keyboard poller timer and state-------------------- //
 IntervalTimer keyboard_poller_timer;
-const int keyboard_poller_period_usec = 10000;  // run at 100 Hz
-volatile uint64_t switch_state;                 // will likely store the state of keys (??) - using a 64 bit integer => 64 key states, i.e. 1 for pressed, 0 for not
-uint32_t time_of_last_press_ms;                 // useful for debouncing/long presses
+// Runs poller at 100 Hz:
+const int keyboard_poller_period_usec = 10000;
+// Will likely store the state of keys (??) - using a 64 bit integer => 64 key states, i.e. 1 for pressed, 0 for not:
+volatile uint64_t switch_state;
+// Useful for debouncing/long presses:
+uint32_t time_of_last_press_ms;
 
-// keyboard modifiers
+// Keyboard modifiers:
 const uint8_t CAP_KEY_INDEX = 3;
 const uint8_t SYM_KEY_INDEX = 40;
 
@@ -140,9 +152,11 @@ const char *KEYBOARD_LAYOUT_SYM = "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ 
   - TFT display with ILI9341 controller via SPI
   - DAC, power control, and a battery monitor
 */
+// TODO: this is too low, for testing only:
 bool screen_on;
-const int screen_timeout_ms = 10000;                                                    // todo: this is too low, for testing only
-ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);  // initializes the display using pin numbers defined above, which get passed to the constructor
+const int screen_timeout_ms = 10000;
+// Initializes the display using pin numbers defined above, which get passed to the constructor:
+ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);
 
 // ------------------- Transmit message field ---------------------------- //
 char tx_display_buffer[MAX_TEXT_LENGTH];
@@ -194,12 +208,14 @@ inline void set_tx_power_enable(bool enable) {
 */
 void adc_buffer_full_interrupt() {
   dma_ch1.clearInterrupt();
-  memcpy((void *)adc_buffer_copy, (void *)dma_adc_buff1, sizeof(dma_adc_buff1)); // mempcy copies a block of memory from one location to another
+  // mempcy copies a block of memory from one location to another:
+  memcpy((void *)adc_buffer_copy, (void *)dma_adc_buff1, sizeof(dma_adc_buff1));
   if ((uint32_t)dma_adc_buff1 >= 0x20200000u)
     arm_dcache_delete((void *)dma_adc_buff1, sizeof(dma_adc_buff1));
-  dma_ch1.enable();  // Re-enables the DMA channel for next read
+  // Re-enables the DMA channel for next read:
+  dma_ch1.enable();
 
-  /* 
+  /*
     Processes data:
     Uses Goertzel algorithm to analyze the frequency content of a series of ADC samples
   */
@@ -222,29 +238,29 @@ void adc_buffer_full_interrupt() {
 }
 
 /*
-  Configures the system to receive data: initializes the ADC,  
+  Configures the system to receive data: initializes the ADC,
   configures Goertzel filters for frequency analysis, sets the gain on the charge amplifier,
   sets up DMA channel for ADC to send data to a buffer super duper efficiently.
   Direct Memory Access (DMA) --> data gets moved in/out of system memory w/o CPU involvement, so it's very efficient
   Charge amplifier --> converts super low charge signals to proportional voltage signals
 */
 void setup_receiver() {
-  // setup input pins
-  pinMode(readPin_adc_0, INPUT);  // sets the readPin_adc_0 as the input pin
+  // Sets readPin_adc_0 as the input pin:
+  pinMode(readPin_adc_0, INPUT);
 
-  // Initialize Goertzel filters (TODO: Hardcoded frequencies here)
-  for (int j = 0; j < gs_len; j++) {  // iterating over Goertzel filter objects
+  // Initialize Goertzel filters (TODO: Hardcoded frequencies here):
+  for (int j = 0; j < gs_len; j++) {
     // The 2nd param sets the initial frequency for that filter: so 14000, 14200, 14400 etc
-    initialize_goertzel(&gs[j], 15000 + (j - 5) * 200, adc_frequency); // adc_frequency is sampling freq 89.2 khz
-  } // Measures amp of specific freq over some time period in a received audio signal --> bytes
+    initialize_goertzel(&gs[j], 15000 + (j - 5) * 200, adc_frequency);
+  }
 
-  // Sets gain on charge amplifier
+  // Sets gain on charge amplifier:
   set_charge_amplifier_gain(6);
 
   // Sets up ADC (for received audio signal)
   adc->adc0->setAveraging(1); // no averaging
   adc->adc0->setResolution(12); // bits
-  adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED); // we want it to be
+  adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
   //adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
 
   // Sets up DMA
@@ -252,13 +268,16 @@ void setup_receiver() {
   #pragma GCC diagnostic ignored "-Wstrict-aliasing"
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
   #pragma GCC diagnostic pop
-  dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2); // Each time you read from adc get 2 bytes, so that's why 2x
+  // Each time you read from adc you get 2 bytes, so that's why 2x:
+  dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
-  dma_ch1.attachInterrupt(&adc_buffer_full_interrupt); // When dma is done, call adc_buffer_full_interrup which is a func
+  // When dma is done, calls adc_buffer_full_interrup which is a func:
+  dma_ch1.attachInterrupt(&adc_buffer_full_interrupt);
   dma_ch1.triggerAtHardwareEvent(DMAMUX_SOURCE_ADC1);
 
-  dma_ch1.enable();  // Enables the DMA channel
+  // Enables the DMA channel:
+  dma_ch1.enable();
   adc->adc0->enableDMA();
   adc->adc0->startSingleRead(readPin_adc_0);
   // This actually determines how fast to sample the signal, and starts timer to initiate dma transfer from adc to memory once 2x buffer size bytes reached
@@ -266,12 +285,12 @@ void setup_receiver() {
 }
 
 /*
-  Sets up the transmitter by configuring output pins, enabling transmission power, and 
+  Sets up the transmitter by configuring output pins, enabling transmission power, and
   writing initial values to a DAC (Digital-to-Analog Converter). Configures gain and voltage references for the DAC.
 */
 void setup_transmitter() {
-  pinMode(tx_power_en, OUTPUT); // tx is transmit, rx is receive 
-  pinMode(xdcr_sw, OUTPUT); // xdcr is transducer
+  pinMode(tx_power_en, OUTPUT);
+  pinMode(xdcr_sw, OUTPUT);
   pinMode(dac_cs, OUTPUT);
   digitalWrite(dac_cs, HIGH);
   // TODO: FOR TESTING ONLY:
@@ -283,7 +302,7 @@ void setup_transmitter() {
 }
 
 /*
-  Sends data to a DAC via SPI: prepares a 3-byte buffer with an address and a 12-bit value, 
+  Sends data to a DAC via SPI: prepares a 3-byte buffer with an address and a 12-bit value,
   then sends the data using SPI communication.
 */
 void write_to_dac(uint8_t address, uint16_t value) {
@@ -302,8 +321,6 @@ void write_to_dac(uint8_t address, uint16_t value) {
   SPI.transfer(buf, 3);
   digitalWrite(dac_cs, HIGH);
   SPI.endTransaction();
-
-  // float frequency = (bit) ? 2.2e3 : 2.0e3;
 }
 
 // ------------------- Screen Behavior Utility Functions ----------------- //
@@ -337,7 +354,7 @@ void draw_message_text(int length_limit, const char *text_to_draw, int text_star
   int chars_in_current_line = 0;
   for (int curr_char_index = 0; curr_char_index < length_limit; curr_char_index++) {
     if (text_to_draw[curr_char_index] == '\n') {
-      // Moves the cursor to the next line (adjust draw_start_y based on text size)
+      // Moves the cursor to the next line (adjust draw_start_y based on text size):
       start_x = text_start_x;
       start_y += LINE_HEIGHT;
       chars_in_current_line = 0;
@@ -348,7 +365,7 @@ void draw_message_text(int length_limit, const char *text_to_draw, int text_star
       tft.drawChar(start_x, start_y, text_to_draw[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
       start_x += CHAR_WIDTH;
     } else {
-      // Draws the character at the current cursor position
+      // Draws the character at the current cursor position:
       tft.drawChar(start_x, start_y, text_to_draw[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
       start_x += CHAR_WIDTH;
       chars_in_current_line++;
@@ -394,14 +411,14 @@ void display_chat_history(ChatBufferState* state) {
   tft.fillRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_WHITE);
   tft.drawRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_RED);
 
-  // Iterates over and draws each message, starting with whatever message is at curr_message_index, then the next most recent message, and so on
+  // Iterates over and draws each message, starting with whatever message is at curr_message_index, then the next most recent message, and so on:
   for (int drawn_message_count = 0; drawn_message_count < messages_to_display_count; drawn_message_count++) {
-    // Stuff to get timestamp:
-    struct tm *timeinfo = localtime(&state->chat_history[curr_message_index].timestamp); // Converts Unix timestamp to local time format
-    char time_as_str[8];  // Buffer for "00:00am" format (7 chars + '\0') to hold final string that will get displayed
-    strftime(time_as_str, sizeof(time_as_str), "%I:%M%p", timeinfo); // Puts time in a 00:00PM (or AM) format
+    // Gets timestamp and formats as 00:00PM (or AM) for chat display:
+    struct tm *timeinfo = localtime(&state->chat_history[curr_message_index].timestamp);
+    char time_as_str[8];
+    strftime(time_as_str, sizeof(time_as_str), "%I:%M%p", timeinfo);
 
-    // Stuff to calculate the number of lines this message will occupy:
+    // Calculates number of lines this message will occupy:
     int line_count = 1;
     int text_length = strnlen(state->chat_history[curr_message_index].text, MAX_TEXT_LENGTH);
     int chars_in_current_line = 0;
@@ -422,32 +439,36 @@ void display_chat_history(ChatBufferState* state) {
     const int border_height = box_height + BORDER_PADDING_Y;
     int draw_start_y = curr_message_pos - box_height + LINE_HEIGHT;
 
-    // Stuff to draw message box and timestamp for incoming messages:
+    // Draws message box and timestamp for incoming messages:
     if (strcmp(state->chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
       // Draws timestamp at current line:
       tft.drawString(time_as_str, INCOMING_TIMESTAMP_START_X, draw_start_y);
       tft.drawRect(INCOMING_BORDER_START_X, border_start_y, INCOMING_BORDER_WIDTH, border_height, ILI9341_BLUE);
 
-    // Stuff to draw message box and timestamp for outgoing messages:
+    // Draws message box and timestamp for outgoing messages:
     } else {
       tft.drawString(time_as_str, OUTGOING_TIMESTAMP_START_X, draw_start_y);
       tft.drawRect(OUTGOING_BORDER_START_X, border_start_y, OUTGOING_BORDER_WIDTH, border_height, ILI9341_LIGHTGREY);
     }
 
-    // Stuff to draw text chars for incoming messages:
+    // Draws text chars for incoming messages:
     if (strcmp(state->chat_history[curr_message_index].recipient, RECIPIENT_UNKEY) == 0) {
       draw_message_text(text_length, state->chat_history[curr_message_index].text, INCOMING_TEXT_START_X, draw_start_y, CHAT_WRAP_LIMIT);
-    // Stuff to draw text chars for outgoing messages:
+    // Draws text chars for outgoing messages:
     } else {
       draw_message_text(text_length, state->chat_history[curr_message_index].text, OUTGOING_TEXT_START_X, draw_start_y, CHAT_WRAP_LIMIT);
     }
 
     // Clips anything that scrolls past upper bound of chat history box (lib doesn't have a function for this)
-    tft.fillRect(CHAT_BOX_START_X, BATTERY_BOX_HEIGHT, CHAT_BOX_WIDTH, SPACE_UNDER_BATTERY_WIDTH, ILI9341_WHITE); // under battery display
-    tft.fillRect(BATTERY_BOX_WIDTH, 0, SPACE_BESIDE_BATTERY_WIDTH, CHAT_BOX_START_Y, ILI9341_WHITE); // next to battery display
+    // ...Under battery display:
+    tft.fillRect(CHAT_BOX_START_X, BATTERY_BOX_HEIGHT, CHAT_BOX_WIDTH, SPACE_UNDER_BATTERY_WIDTH, ILI9341_WHITE);
+    // ...Next to battery display:
+    tft.fillRect(BATTERY_BOX_WIDTH, 0, SPACE_BESIDE_BATTERY_WIDTH, CHAT_BOX_START_Y, ILI9341_WHITE);
 
-    curr_message_pos -= (box_height + CHAT_BOX_LINE_PADDING); // Separates messages
-    curr_message_index = (curr_message_index - 1 + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES; // Gets next most recent message from ring buffer
+    // Vertically separates messages:
+    curr_message_pos -= (box_height + CHAT_BOX_LINE_PADDING);
+    // Gets next most recent message from ring buffer:
+    curr_message_index = (curr_message_index - 1 + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES;
   }
 }
 
@@ -482,7 +503,7 @@ void transmit_preamble() {
   float w = 2 * PI * frequency;
   unsigned long tone_start = micros();
   while (micros() - tone_start < 10000) {
-    float t = (micros() - tone_start) / 1000000.0; // t is elapsed time in seconds
+    float t = (micros() - tone_start) / 1000000.0;
     uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 409);
     noInterrupts();
     write_to_dac(0, dac_value);
@@ -499,25 +520,26 @@ write_to_dac(address=0, val=0): DAC receives a 24-bit message that sets the outp
 write_to_dac(address=0, val=4095): DAC receives a 24-bit message that sets the output to the maximum voltage
 */
 void encode_message(const char* message_to_encode) {
-  unsigned long totalBitTime = 0;
-  unsigned long bitCount = 0;
-
   for (int i = 0; message_to_encode[i] != '\0'; i++) {
     Serial.print("Processing letter: ");
     Serial.println(message_to_encode[i]);
 
-    char letter = message_to_encode[i]; // letter is an unsigned char
+    char letter = message_to_encode[i];
 
-    // Encode each of char's 8 bits into a corresponding frequency starting with msb
+    // Encodes each of char's 8 bits into a corresponding frequency starting with msb:
     for (int j = 7; j >= 0; j--) {
       int bit = (letter >> j) & 1;
-      float w = (bit) ? (2 * PI * 2200) : (2 * PI * 2000); // w is the angular frequency, wherein w = 2 * pi * f
-      unsigned long bit_start = micros(); // start time for the current bit period
+      // w is the angular frequency, wherein w = 2 * pi * f
+      float w = (bit) ? (2 * PI * 2200) : (2 * PI * 2000);
+      // Start time for the current bit period:
+      unsigned long bit_start = micros();
 
-      // Generate a sine wave for current bit for 10 ms
-      while (micros() - bit_start < 10000) { // while current_time - bit_period start is < 10 ms
-        float t = (micros() - bit_start) / 1000000.0; // current bit period elapsed time, converted to seconds
-        uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 409); // get the phase angle at time t and scale/cast for 12 bit DAC
+      // Generates a sine wave for current bit for 10 ms:
+      while (micros() - bit_start < 10000) {// while current_time - bit_period start is < 10 ms
+        // Gets t, the current bit period elapsed time, converted to seconds:
+        float t = (micros() - bit_start) / 1000000.0;
+        // Gets the phase angle at time t and scale/cast for 12 bit DAC:
+        uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 409);
         noInterrupts();
         write_to_dac(0, dac_value);
         interrupts();
@@ -538,15 +560,15 @@ void send_message(const char* message_text) {
 }
 
 /*
-  Reads the state of a keyboard by polling a shift register connected to the keyboard’s data and clock lines. 
-  It detects new key presses, updates the screen, and processes specific keys like CAPS, SYM, and SEND. 
+  Reads the state of a keyboard by polling a shift register connected to the keyboard’s data and clock lines.
+  It detects new key presses, updates the screen, and processes specific keys like CAPS, SYM, and SEND.
   It also uses ilog2() to identify the index of the pressed key.
 */
 void poll_keyboard(ChatBufferState* state) {
   // static int modifier = 0;
 
   // Latches keyboard state into shift registers
-  // kb_load_n is an output pin which pulses a signal here from LOW to HIGH 
+  // kb_load_n is an output pin which pulses a signal here from LOW to HIGH
   // low to hi transmission lets shift reg know to record keyboard state (8 bits per registr)
   digitalWrite(kb_load_n, LOW);
   delayNanoseconds(5);
@@ -565,9 +587,7 @@ void poll_keyboard(ChatBufferState* state) {
   digitalWriteFast(kb_clock, LOW);
 
   // Compares results to previous one to detect new key presses
-  // `~` is bitwise not, flips all 0s/1s
-  // `&` is bitwise and
-  uint64_t new_press = ~read_buffer & switch_state; // isolates the bits where a pressed key is now unpressed to find newly pressed keys
+  uint64_t new_press = ~read_buffer & switch_state;
   switch_state = read_buffer;
 
   if (new_press) {
@@ -591,8 +611,8 @@ void poll_keyboard(ChatBufferState* state) {
           /*
           Pressing "up" increments message_scroll_offset, which is used to determine which
           message should be displayed at the bottom of the history box. Any older messages are just
-          redrawn above that message, and any content that exceeds the heigh of the box should be cut 
-          off anyway. Note: message_scroll_offset should never exceed (chat_history_message_count - 1) 
+          redrawn above that message, and any content that exceeds the heigh of the box should be cut
+          off anyway. Note: message_scroll_offset should never exceed (chat_history_message_count - 1)
           even if the user keeps pressing 'up'
           if (message_scroll_offset == chat_history_message_count - 1), that means the oldest message is
           currently displayed at the bottom of the history box
@@ -651,19 +671,19 @@ void poll_keyboard(ChatBufferState* state) {
 }
 
 /*
-  Configures the keyboard polling mechanism by setting up input/output pins and 
+  Configures the keyboard polling mechanism by setting up input/output pins and
   starting a timer that calls poll_keyboard at regular intervals
 */
 void setup_keyboard_poller() {
   switch_state = 0;
 
-  // Sets up SPI
+  // Sets up SPI:
   pinMode(kb_load_n, OUTPUT);
   digitalWrite(kb_load_n, HIGH);
   pinMode(kb_clock, OUTPUT);
   pinMode(kb_data, INPUT);
 
-  // Starts timer
+  // Starts timer:
   if (!keyboard_poller_timer.begin([]() { poll_keyboard(&chat_buffer_state); }, keyboard_poller_period_usec)) {
     Serial.println("Failed setting up poller");
   }
@@ -676,12 +696,13 @@ void setup_keyboard_poller() {
   Usage: Called in setup_screen to initialize the display buffer, and in poll_keyboard to reset it after the SEND key is pressed.
 */
 static void reset_tx_display_buffer() {
-  memset(tx_display_buffer, '\0', MAX_TEXT_LENGTH); // Fills buffer with null chars ('\0')
+  memset(tx_display_buffer, '\0', MAX_TEXT_LENGTH);
+  // Fills buffer with null chars ('\0'):
   tx_display_buffer_length = 0;
 }
 
 /*
-  Clears the display area where typed text is shown and redraws the boundary of the text box. 
+  Clears the display area where typed text is shown and redraws the boundary of the text box.
   It also reprints the current contents of the tx_display_buffer.
   Usage: Called in poll_keyboard when the buffer changes and needs to be updated on the screen.
 */
@@ -696,17 +717,18 @@ static void redraw_typing_box() {
 */
 void setup_screen() {
   pinMode(tft_led, OUTPUT);
-  digitalWrite(tft_led, HIGH); // Actual thing that turns screen light on
+  // Responsible for turning screen light on:
+  digitalWrite(tft_led, HIGH);
   screen_on = true;
 
-  pinMode(tft_sck, OUTPUT); // sck is clock
+  pinMode(tft_sck, OUTPUT);
 
   tft.begin();
   tft.setRotation(2);
   tft.fillScreen(ILI9341_WHITE);
-  // Draws chat history boundaries
+  // Draws chat history boundaries:
   tft.drawRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_RED);
-  // Draws typing box boundaries
+  // Draws typing box boundaries:
   tft.drawRect(CHAT_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_RED);
   // Sets cursor to starting position inside typing box:
   tft.setCursor(TYPING_CURSOR_X, TYPING_CURSOR_Y);
@@ -756,30 +778,30 @@ void incoming_message_callback() {
 }
 
 /*
-  The main/top-level setup function that initializes the serial communication, SPI, and I2C; 
+  The main/top-level setup function that initializes the serial communication, SPI, and I2C;
   calls other setup functions to configure the screen, receiver, transmitter, and keyboard poller.
   Usage: The first function called in the program to initialize all components.
 */
 void setup() {
-  Serial.begin(9600);  // initializes serial communication with Teensy at baud rate of 9600 bps
-  while (!Serial && millis() < 5000) ;  // Checks if connection is working and waits up to 5 sec for it to happen
+  // Initializes serial communication with Teensy at baud rate of 9600 bps:
+  Serial.begin(9600);
+  // Checks if connection is working and waits up to 5 sec for it to happen:
+  while (!Serial && millis() < 5000) ;
   delay(100);
   Serial.println("============================\nStarting setup()");
 
-  SPI.begin();               // SPI commuincation bus for keyboard/display etc
-  Wire.begin();              // I2C communication bus for charge amplifier
-  analogReadResolution(12);  // specifies 12-bit resolution
+  // SPI commuincation bus for keyboard/display etc:
+  SPI.begin();
+  // I2C communication bus for charge amplifier:
+  Wire.begin();
+  // Specifies 12-bit resolution:
+  analogReadResolution(12);
 
   test_incoming_message.begin(incoming_message_callback, 10000000);
   setup_screen();
   setup_receiver();
   setup_transmitter();
-  transmit_message("Hi!");
-  /*
-  01001000
-  01101001
-  00100001
-  */
+  // transmit_message("Hi!");
   setup_keyboard_poller();
 
   Serial.println("setup() complete\n============================");
