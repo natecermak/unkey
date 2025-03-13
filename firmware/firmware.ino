@@ -17,6 +17,7 @@
 #define LINE_HEIGHT 10 // Height of each line in pixels
 #define MAX_CHAT_MESSAGES 50
 #define MAX_NAME_LENGTH 20
+#define MAX_PACKET_SIZE 405 // 400 characters plus 2 header bytes, 2 footer bytes, and the null terminator
 #define MAX_TEXT_LENGTH 400 // Unit is characters
 #define INCOMING_TEXT_START_X 70 // Received message horizontal offset
 #define INCOMING_BORDER_START_X 62
@@ -55,6 +56,11 @@ typedef struct {
   char recipient[MAX_NAME_LENGTH];
   char text[MAX_TEXT_LENGTH];
 } message_t;
+
+typedef struct _tx_parameters {
+  float freq_low, freq_high;
+  uint32_t usec_per_bit;
+} tx_parameters_t;
 
 struct ChatBufferState {
   int message_buffer_write_index;
@@ -478,62 +484,61 @@ void add_message_to_chat_history(ChatBufferState* state, const char* message_tex
   curr_message.sender[MAX_NAME_LENGTH - 1] = '\0';
   curr_message.recipient[MAX_NAME_LENGTH - 1] = '\0';
 
-  // Ring buffer logic to overwrite oldest message when buffer is exceeded
+  // Ring buffer logic to overwrite oldest message when buffer is exceeded:
   state->chat_history[state->message_buffer_write_index] = curr_message;
   state->message_buffer_write_index = (state->message_buffer_write_index + 1) % MAX_CHAT_MESSAGES;
   if (state->chat_history_message_count < MAX_CHAT_MESSAGES) {
     state->chat_history_message_count++;
   }
-
 }
 
-/*
-  TODO: Transmits the SOH (Start of Heading) ASCII control character via the DAC?
-  For now just transmits a tone at 4kHz
-*/
-void transmit_preamble() {
-  Serial.println("Starting transmission");
-  int frequency = 600;
-  float w = 2 * PI * frequency;
-  unsigned long tone_start = micros();
-  while (micros() - tone_start < 10000) {
-    float t = (micros() - tone_start) / 1000000.0;
-    uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 409);
-    noInterrupts();
-    write_to_dac(0, dac_value);
-    interrupts();
-  }
+/**
+ * Packetizes a message by adding header (SOH and STX) and footer (ETX and EOT) bytes to the original message,
+ * storing the result in transmit_buffer.
+ */
+void packetize_message(const char* message, char* transmit_buffer) {
+  // Adds header bytes: SOH (0x01) and STX (0x02)
+  transmit_buffer[0] = 0x01;
+  transmit_buffer[1] = 0x02;
+
+  // Copies message into buffer, accounting for 2 header bytes:
+  strncpy(&transmit_buffer[2], message, MAX_PACKET_SIZE - 4);
+  int msg_len = strlen(&transmit_buffer[2]);
+
+  // Adds footer bytes: ETX (0x03) and EOT (0x04)
+  transmit_buffer[2 + msg_len]     = 0x03;
+  transmit_buffer[2 + msg_len + 1] = 0x04;
+
+  // Null-terminates the string:
+  transmit_buffer[2 + msg_len + 2] = '\0';
 }
 
-/*
-str --> sequence of voltages
-str of chars --> 8 bits per char --> 8 voltages per char --> len(str) * 8 voltages in total
-
-address of 0 --> writing to channel 0 of the DAC.
-write_to_dac(address=0, val=0): DAC receives a 24-bit message that sets the output to the minimum voltage (0V)
-write_to_dac(address=0, val=4095): DAC receives a 24-bit message that sets the output to the maximum voltage
-*/
-void encode_message(const char* message_to_encode) {
-  for (int i = 0; message_to_encode[i] != '\0'; i++) {
+/**
+ * Transmits a message by modulating each character's bits into analog tones.
+ * Note: address of 0 --> writing to channel 0 of the DAC.
+ * write_to_dac(address=0, val=0): DAC receives a 24-bit message that sets the output to the minimum voltage (0V)
+ * write_to_dac(address=0, val=4095): DAC receives a 24-bit message that sets the output to the maximum voltage
+ */
+void transmit_message(const char* message_to_transmit, const tx_parameters_t* tx_parameters) {
+  for (int i = 0; message_to_transmit[i] != '\0'; i++) {
     Serial.print("Processing letter: ");
-    Serial.println(message_to_encode[i]);
+    Serial.println(message_to_transmit[i]);
+    char letter = message_to_transmit[i];
 
-    char letter = message_to_encode[i];
-
-    // Encodes each of char's 8 bits into a corresponding frequency starting with msb:
+    // Translates each of char's 8 bits into a corresponding frequency starting with msb:
     for (int j = 7; j >= 0; j--) {
       int bit = (letter >> j) & 1;
       // w is the angular frequency, wherein w = 2 * pi * f
-      float w = (bit) ? (2 * PI * 2200) : (2 * PI * 2000);
+      float w = (bit) ? (2 * PI * tx_parameters->freq_high / 1e6)
+                      : (2 * PI * tx_parameters->freq_low / 1e6);
       // Start time for the current bit period:
       unsigned long bit_start = micros();
-
+      unsigned long time_usec;
+      uint16_t dac_value;
       // Generates a sine wave for current bit for 10 ms:
-      while (micros() - bit_start < 10000) {// while current_time - bit_period start is < 10 ms
-        // Gets t, the current bit period elapsed time, converted to seconds:
-        float t = (micros() - bit_start) / 1000000.0;
-        // Gets the phase angle at time t and scale/cast for 12 bit DAC:
-        uint16_t dac_value = (uint16_t)(((sin(w * t) + 1.0) / 2.0) * 409);
+      while ((time_usec = micros() - bit_start) < tx_parameters->usec_per_bit) {
+        // Gets the phase angle at curr time in microsec and scales for 12 bit DAC:
+        dac_value = (uint16_t)(((sin(w * time_usec) + 1.0) / 2.0) * 409);
         noInterrupts();
         write_to_dac(0, dac_value);
         interrupts();
@@ -552,7 +557,7 @@ void send_message(const char* message_text) {
   char transmit_buffer[MAX_PACKET_SIZE];
   packetize_message(message_text, transmit_buffer);
   tx_parameters_t params = {2000, 2200, 10000};
-  transmit_message(transmit_buffer, params);
+  transmit_message(transmit_buffer, &params);
   add_message_to_chat_history(&chat_buffer_state, message_text, RECIPIENT_UNKEY, RECIPIENT_VOID);
   display_chat_history(&chat_buffer_state);
 }
@@ -792,7 +797,7 @@ void setup() {
   // Specifies 12-bit resolution:
   analogReadResolution(12);
 
-  test_incoming_message.begin(incoming_message_callback, 10000000);
+  // test_incoming_message.begin(incoming_message_callback, 10000000);
   setup_screen();
   setup_receiver();
   setup_transmitter();
