@@ -3,71 +3,10 @@
 #include <ILI9341_t3n.h>
 #include <SPI.h>
 #include <Wire.h>
+
+#include "config.h"
 #include "goertzel.h"
-// #include <ili9341_t3n_font_ComicSansMS.h> // how to import ili9341_t3n fonts, which should automatically include anti-aliasing
 
-#define CHAT_BOX_LINE_PADDING 11 // Extra vertical space between lines in chat history box area
-#define CHAT_BOX_START_X 0 // Chat history box horizontal offset (0 is flush to left screen bound)
-#define CHAT_BOX_START_Y 25 // Chat history box vertical offset (0 is flush to top screen bound)
-#define CHAT_BOX_WIDTH 235 // Chat history box width
-#define CHAT_BOX_HEIGHT 201 // // Chat history box height
-#define CHAT_BOX_BOTTOM_PADDING 3
-#define CHAR_WIDTH 7 // Width of each character in pixels
-#define CHAT_WRAP_LIMIT 16 // Sender message wrapping cut-off
-#define LINE_HEIGHT 10 // Height of each line in pixels
-#define MAX_CHAT_MESSAGES 50
-#define MAX_NAME_LENGTH 20
-#define MAX_PACKET_SIZE 405 // 400 characters plus 2 header bytes, 2 footer bytes, and the null terminator
-#define MAX_TEXT_LENGTH 400 // Unit is characters
-#define INCOMING_TEXT_START_X 70 // Received message horizontal offset
-#define INCOMING_BORDER_START_X 62
-#define INCOMING_BORDER_WIDTH 132
-#define INCOMING_BORDER_MARGIN 6
-#define OUTGOING_TEXT_START_X 120 // Sent message horizontal offset
-#define OUTGOING_BORDER_START_X 112
-#define OUTGOING_BORDER_WIDTH 122
-#define SCAN_CHAIN_LENGTH 56  // 56 keys that need to be checked per polling cycle
-#define SEND_WRAP_LIMIT 30 // Sender message wrapping cut-off`
-#define TEXT_SIZE 1 // Text size multiplier (depends on your display)
-#define INCOMING_TIMESTAMP_START_X 10 // Timestamp horizontal offset for incoming messages (0 is flush to left screen bound)
-#define OUTGOING_TIMESTAMP_START_X 60 // Timestamp horizontal offset for outgoing messages (0 is flush to left screen bound)
-#define TYPING_BOX_START_X 0 // Typing box horizontal offset (0 is flush to left screen bound)
-#define TYPING_BOX_START_Y 225 // Typing box vertical offset (0 is flush to top screen bound
-#define TYPING_BOX_HEIGHT 90 // Typing box height
-#define TYPING_CURSOR_X 2 // Typing cursor horizontal offset (0 is flush to left screen bound)
-#define TYPING_CURSOR_Y 227 // Typing cursor vertical offset (0 is flush to top screen bound
-#define BATTERY_BOX_HEIGHT 10
-#define SPACE_UNDER_BATTERY_WIDTH 15
-#define BATTERY_BOX_WIDTH 80
-#define SPACE_BESIDE_BATTERY_WIDTH 155 // 235 - BATTERY_BOX_WIDTH
-#define BORDER_PADDING_Y 6
-#define RECIPIENT_UNKEY "unkey"
-#define RECIPIENT_VOID "the void"
-#define TEST_MESSAGE_TEXT "Incoming from The Void"
-#define TESTING_MESSAGE_COUNT_LIMIT 2
-
-typedef struct {
-  // message ID (might need once we need to handle incoming messages)
-  // chat ID (only necessary if one device can have multiple chats)
-  // sender device ID (" " "")
-  // recipient device ID? (" " "")
-  time_t timestamp;
-  char sender[MAX_NAME_LENGTH];
-  char recipient[MAX_NAME_LENGTH];
-  char text[MAX_TEXT_LENGTH];
-} message_t;
-
-typedef struct _tx_parameters {
-  float freq_low, freq_high;
-  uint32_t usec_per_bit;
-} tx_parameters_t;
-
-struct ChatBufferState {
-  int message_buffer_write_index;
-  int chat_history_message_count;
-  int message_scroll_offset;  // Represents the # of messages scrolled up from most recent message
-  message_t chat_history[MAX_CHAT_MESSAGES];
-};
 
 ChatBufferState chat_buffer_state = {0, 0, 0, {}};
 
