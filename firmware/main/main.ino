@@ -8,8 +8,12 @@
 #include "hardware_config.h"
 #include "comm/goertzel.h"
 #include "comm/goertzel.cpp"
+#include "comm/comm.h"
+#include "comm/comm.cpp"
 #include "chat/chat_logic.h"
+#include "chat/chat_logic.cpp"
 #include "display/display.h"
+#include "display/display.cpp"
 #include "keyboard/keyboard.h"
 
 
@@ -265,37 +269,6 @@ void _debug_print_chat_history(ChatBufferState* state) {
 }
 
 /**
- * Draws message character content (incorporating line breaks and text wrapping) in the chat history box for a given message.
- * A single message is defined as whatever text chars a user has entered into the text staging box when "send" is pressed.
- * text_start_x and text_start_y are passed in to indicate the position from which the function should begin drawing
- * the first character (i.e. the position of the top left corner of the first character).
- */
-void draw_message_text(int length_limit, const char *text_to_draw, int text_start_x, int text_start_y, int wrap_limit) {
-  int start_x = text_start_x;
-  int start_y = text_start_y;
-  int chars_in_current_line = 0;
-  for (int curr_char_index = 0; curr_char_index < length_limit; curr_char_index++) {
-    if (text_to_draw[curr_char_index] == '\n') {
-      // Moves the cursor to the next line (adjust draw_start_y based on text size):
-      start_x = text_start_x;
-      start_y += LINE_HEIGHT;
-      chars_in_current_line = 0;
-    } else if (chars_in_current_line >= wrap_limit) {
-      start_x = text_start_x;
-      start_y += LINE_HEIGHT;
-      chars_in_current_line = 1;
-      tft.drawChar(start_x, start_y, text_to_draw[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
-      start_x += CHAR_WIDTH;
-    } else {
-      // Draws the character at the current cursor position:
-      tft.drawChar(start_x, start_y, text_to_draw[curr_char_index], ILI9341_BLACK, ILI9341_WHITE, TEXT_SIZE, TEXT_SIZE);
-      start_x += CHAR_WIDTH;
-      chars_in_current_line++;
-    }
-  }
-}
-
-/**
  * Clears the chat history display area and redraws messages from chat_history, starting with the message at
  * the currently set scroll position (with progressively older messages displayed above).
  * Redrawing is accomplished by first calculating the needed screen space for each message, factoring in
@@ -390,30 +363,6 @@ void display_chat_history(ChatBufferState* state) {
     curr_message_pos -= (box_height + CHAT_BOX_LINE_PADDING);
     // Gets next most recent message from ring buffer:
     curr_message_index = (curr_message_index - 1 + MAX_CHAT_MESSAGES) % MAX_CHAT_MESSAGES;
-  }
-}
-
-/**
- * Copies the provided message text, sender, and recipient into the chat history buffer,
- * updates the write index, and increments the message count (up to a maximum).
- */
-void add_message_to_chat_history(ChatBufferState* state, const char* message_text, const char* sender, const char* recipient) {
-  message_t curr_message;
-  curr_message.timestamp = time(NULL);
-
-  // Have to copy into curr_message like this bc message_text won't be available in mem:
-  strncpy(curr_message.text, message_text, MAX_TEXT_LENGTH - 1);
-  strncpy(curr_message.sender, sender, MAX_NAME_LENGTH - 1);
-  strncpy(curr_message.recipient, recipient, MAX_NAME_LENGTH - 1);
-  curr_message.text[MAX_TEXT_LENGTH - 1] = '\0';
-  curr_message.sender[MAX_NAME_LENGTH - 1] = '\0';
-  curr_message.recipient[MAX_NAME_LENGTH - 1] = '\0';
-
-  // Ring buffer logic to overwrite oldest message when buffer is exceeded:
-  state->chat_history[state->message_buffer_write_index] = curr_message;
-  state->message_buffer_write_index = (state->message_buffer_write_index + 1) % MAX_CHAT_MESSAGES;
-  if (state->chat_history_message_count < MAX_CHAT_MESSAGES) {
-    state->chat_history_message_count++;
   }
 }
 
@@ -547,14 +496,14 @@ void poll_keyboard(ChatBufferState* state) {
           */
           if (state->message_scroll_offset < state->chat_history_message_count - 1) {
             state->message_scroll_offset++;
-            display_chat_history(&chat_buffer_state);
+            display_chat_history(state);
           }
           break;
         case DOWN_KEY_INDEX:
           Serial.println("You pressed DOWN");
           if (state->message_scroll_offset > 0) {
             state->message_scroll_offset--;
-            display_chat_history(&chat_buffer_state);
+            display_chat_history(state);
           }
           break;
         case BACK_KEY_INDEX:
@@ -722,7 +671,7 @@ void setup() {
   // Specifies 12-bit resolution:
   analogReadResolution(12);
 
-  // test_incoming_message.begin(incoming_message_callback, 10000000);
+  test_incoming_message.begin(incoming_message_callback, 1000000);
   setup_screen();
   setup_receiver();
   setup_transmitter();
