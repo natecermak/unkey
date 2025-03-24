@@ -6,13 +6,12 @@
 
 #include "config.h"
 #include "hardware_config.h"
-#include "goertzel.h"
+#include "comm/goertzel.h"
+#include "comm/goertzel.cpp"
+#include "chat/chat_logic.h"
+#include "display/display.h"
+#include "keyboard/keyboard.h"
 
-/*
-
-
-
-*/
 
 
 ChatBufferState chat_buffer_state = {0, 0, 0, {}};

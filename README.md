@@ -134,5 +134,4 @@ v1.3 pcb
 │
 ├── comm/
 │   ├── comm.cpp/h          # Encode/decode bits, tx/rx state
-│   ├── goertzel.cpp/h      # Frequency detection (demodulation)
-│   └── tx_parameters.h     # TX configuration structs (optional)
+│   └── goertzel.cpp/h      # Frequency detection (demodulation)
