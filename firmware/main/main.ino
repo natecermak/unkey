@@ -8,6 +8,12 @@
 #include "hardware_config.h"
 #include "goertzel.h"
 
+/*
+
+
+
+*/
+
 
 ChatBufferState chat_buffer_state = {0, 0, 0, {}};
 
