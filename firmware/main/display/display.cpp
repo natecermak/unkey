@@ -1,8 +1,23 @@
 #include "display.h"
 #include "../hardware_config.h"
 
+// ------------------- TFT LCD ------------------------------------------- //
+/**
+ * Initializing the display using pins assigned above, which - as a reminder - interfaces with these things:
+ * - Analog-to-Digital Converter (ADC)
+ * - Keyboard or input device
+ * - TFT display with ILI9341 controller via SPI
+ * - DAC, power control, and a battery monitor
+ */
+
 extern char tx_display_buffer[];
 extern uint16_t tx_display_buffer_length;
+
+bool screen_on;
+unsigned long time_of_last_battery_read_ms;
+const unsigned long BATTERY_READ_PERIOD_MS = 1000;
+// Initializes the display using pin numbers defined above, which get passed to the constructor:
+ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);
 
 /**
  * Draws message character content (incorporating line breaks and text wrapping) in the chat history box for a given message.
@@ -151,4 +166,53 @@ static void reset_tx_display_buffer() {
   memset(tx_display_buffer, '\0', MAX_TEXT_LENGTH);
   // Fills buffer with null chars ('\0'):
   tx_display_buffer_length = 0;
+}
+
+/**
+ * Initializes the TFT screen, sets the screen orientation, clears the screen, and draws some basic UI elements.
+ */
+void setup_screen() {
+  pinMode(tft_led, OUTPUT);
+  // Responsible for turning screen light on:
+  digitalWrite(tft_led, HIGH);
+  screen_on = true;
+
+  pinMode(tft_sck, OUTPUT);
+
+  tft.begin();
+  tft.setRotation(2);
+  tft.fillScreen(ILI9341_WHITE);
+  // Draws chat history boundaries:
+  tft.drawRect(CHAT_BOX_START_X, CHAT_BOX_START_Y, CHAT_BOX_WIDTH, CHAT_BOX_HEIGHT, ILI9341_RED);
+  // Draws typing box boundaries:
+  tft.drawRect(CHAT_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_RED);
+  // Sets cursor to starting position inside typing box:
+  tft.setCursor(TYPING_CURSOR_X, TYPING_CURSOR_Y);
+
+  reset_tx_display_buffer();
+}
+
+/**
+ * Used in poll_battery to display the current battery level on the screen.
+ */
+inline float read_battery_voltage() {
+  // 2.0 for 1:1 voltage divider, 3.3V is max ADC voltage, and ADC is 12-bit (4096 values)
+  return 2.0 * analogRead(battery_monitor) * 3.3 / 4096;
+}
+
+/**
+ * Periodically reads and displays the battery voltage on the screen.
+ */
+void poll_battery() {
+  if (millis() - time_of_last_battery_read_ms > BATTERY_READ_PERIOD_MS) {
+    time_of_last_battery_read_ms += BATTERY_READ_PERIOD_MS;
+    float battery_volts = read_battery_voltage();
+
+    tft.setTextColor(ILI9341_BLACK, ILI9341_WHITE);
+    int16_t x, y;
+    tft.getCursor(&x, &y);
+    tft.setCursor(2, 2);
+    tft.printf("battery %.2fV", battery_volts);
+    tft.setCursor(x, y);
+  }
 }

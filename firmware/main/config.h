@@ -51,6 +51,25 @@
 #define TYPING_CURSOR_Y             227     // Typing cursor vertical offset
 
 //----------------------------------------
+// Keyboard Key Indexes
+//----------------------------------------
+#define CAP_KEY_INDEX     3
+#define SYM_KEY_INDEX     40
+#define BACK_KEY_INDEX    36
+#define DEL_KEY_INDEX     37
+#define RET_KEY_INDEX     44
+#define SEND_KEY_INDEX    45
+#define ESC_KEY_INDEX     48
+#define MENU_KEY_INDEX    49
+#define LEFT_KEY_INDEX    47
+#define UP_KEY_INDEX      50
+#define DOWN_KEY_INDEX    51
+#define RIGHT_KEY_INDEX   46
+
+const char *KEYBOARD_LAYOUT = "1qa~zsw23edxcfr45tgvbhy67ujnmki89ol?~~p0~ ,.\n           ";
+const char *KEYBOARD_LAYOUT_SYM = "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ ,.\n           ";
+
+//----------------------------------------
 // Battery and Display Spacing Configuration
 //----------------------------------------
 #define BATTERY_BOX_HEIGHT          10
@@ -58,6 +77,12 @@
 #define BATTERY_BOX_WIDTH           80
 #define SPACE_BESIDE_BATTERY_WIDTH  155   // Typically: CHAT_BOX_WIDTH - BATTERY_BOX_WIDTH
 #define BORDER_PADDING_Y            6
+
+//----------------------------------------
+// Keyboard Poll Timing
+//----------------------------------------
+uint32_t time_of_last_press_ms; // Useful for debouncing/long presses
+const int keyboard_poller_period_usec = 10000; // Runs poller at 100 Hz:
 
 //----------------------------------------
 // Message and Test Constants

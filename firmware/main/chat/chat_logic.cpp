@@ -3,7 +3,11 @@
 #include <string.h>  // for strncpy
 #include <time.h>    // for time()
 
-extern ChatBufferState chat_buffer_state;
+IntervalTimer test_incoming_message;
+
+static ChatBufferState chat_buffer_state = {0, 0, 0, {}};
+
+int incoming_message_count = 0;
 
 void _debug_print_message(message_t msg) {
   // Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned
@@ -80,4 +84,21 @@ void send_message(const char* message_text) {
   transmit_message(transmit_buffer, &params);
   add_message_to_chat_history(&chat_buffer_state, message_text, RECIPIENT_UNKEY, RECIPIENT_VOID);
   display_chat_history(&chat_buffer_state);
+}
+
+/**
+ * Currently used to simulated staggered incoming messages.
+ */
+void incoming_message_callback() {
+  const char *test_message_text = TEST_MESSAGE_TEXT;
+  add_message_to_chat_history(&chat_buffer_state, test_message_text, RECIPIENT_VOID, RECIPIENT_UNKEY);
+  display_chat_history(&chat_buffer_state);
+  incoming_message_count++;
+  if (incoming_message_count >= TESTING_MESSAGE_COUNT_LIMIT) {
+    test_incoming_message.end();
+  }
+}
+
+ChatBufferState* get_chat_buffer_state() {
+  return &chat_buffer_state;
 }

@@ -12,8 +12,14 @@ void draw_message_text(int length_limit, const char *text_to_draw, int text_star
 
 void display_chat_history(ChatBufferState* state);
 
+void poll_battery();
+
+inline float read_battery_voltage();
+
 static void reset_tx_display_buffer();
 
 static void redraw_typing_box();
+
+void setup_screen();
 
 #endif
