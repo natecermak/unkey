@@ -11,14 +11,15 @@
 #include "config.h"
 #include "hardware_config.h"
 #include "comm/goertzel.h"
-#include "comm/goertzel.cpp"
 #include "comm/comm.h"
-#include "comm/comm.cpp"
 #include "chat/chat_logic.h"
-#include "chat/chat_logic.cpp"
 #include "display/display.h"
-#include "display/display.cpp"
 #include "keyboard/keyboard.h"
+
+#include "comm/goertzel.cpp"
+#include "comm/comm.cpp"
+#include "chat/chat_logic.cpp"
+#include "display/display.cpp"
 #include "keyboard/keyboard.cpp"
 
 void setup() {
