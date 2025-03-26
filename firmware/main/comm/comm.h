@@ -1,3 +1,7 @@
+// ==================================================================
+// comm.h
+// Handles analog signal transmission, reception, and DSP setup
+// ==================================================================
 #ifndef COMM_H
 #define COMM_H
 

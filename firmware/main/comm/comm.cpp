@@ -1,20 +1,18 @@
+// ==================================================================
+// comm.cpp
+// Handles analog signal transmission, reception, and DSP setup
+// ==================================================================
 #include "comm.h"
 #include <Arduino.h> // for digitalWriteFast
 
-// ------------------- ADC, DMA, and Goertzel filters -------------------- //
-/**
- * - ADC is set up to sample an analog signal at 81.92 kHz
- * - DMA is configured to transfer ADC samples into the dma_adc_buff1 buffer
- * - Goertzel algo is initialized to analyze a signal for up to 10 diff frequencies
- */
+// ------------------------------------------------------------------
+// State
+// ------------------------------------------------------------------
 
 char tx_display_buffer[MAX_TEXT_LENGTH];
 uint16_t tx_display_buffer_length;
 
-// Used to interact with ADC hardware for configuring/reading analog signals:
 ADC *adc = new ADC();
-
-// Used to manage transfer of data between ADC and memory using direct memory access (doesn't use CPU => more efficient):
 DMAChannel dma_ch1;
 
 // ADC will sample at freq of 81.92 kHz:
@@ -25,19 +23,21 @@ const uint32_t buffer_size = 10240;
 
 // Creates dma_adc_buff1 buffer:
 DMAMEM static volatile uint16_t __attribute__((aligned(32))) dma_adc_buff1[buffer_size];
-
-// Makes a copy of buffer:
 uint16_t adc_buffer_copy[buffer_size];
 
 uint8_t print_ctr = 0;
-
 const uint8_t gs_len = 10;
 
-// gs is an array that will store state for the Goertzel algo - each goertzel_state obj holds data to compute G algo for that frequency:
+// An array that will store state for the Goertzel algo - each goertzel_state obj
+// holds data to compute G algo for that frequency:
 goertzel_state gs[gs_len];
 
 // Charge amplifier gain:
 const int adg728_i2c_address = 76;
+
+// ------------------------------------------------------------------
+// Functions
+// ------------------------------------------------------------------
 
 /**
  * Transmits a message by modulating each character's bits into analog tones.
@@ -116,14 +116,14 @@ void setup_receiver() {
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
   //adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
 
-  // #pragma GCC diagnostic push
-  // #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 
   // Sets up DMA:
   // Note: The following line raises a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but in this case this warning can be safely ignored
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
 
-  // #pragma GCC diagnostic pop
+  #pragma GCC diagnostic pop
 
   // Each time you read from adc you get 2 bytes, so that's why 2x:
   dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
@@ -144,7 +144,6 @@ void setup_receiver() {
 /**
  * Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters and prints frequency domain data.
  * Analog signals (voltages) --> digital values that can be processed by da Teensy
- * Usage: Attached to a DMA interrupt in setup_receiver and called automatically when the buffer fills up.
  */
 void adc_buffer_full_interrupt() {
   dma_ch1.clearInterrupt();
@@ -179,7 +178,6 @@ void adc_buffer_full_interrupt() {
 /**
  * Sets the gain on a charge amplifier by writing a specific value to an I2C device, a charge amplifier (controlled by gain_index).
  * It shifts 1U left by gain_index to generate a specific binary pattern and writes this value to the amplifier's address.
- * Usage: Called in setup_receiver to configure the amplifier gain
  */
 void set_charge_amplifier_gain(uint8_t gain_index) {
   Wire.beginTransmission(adg728_i2c_address);
@@ -206,7 +204,6 @@ void setup_transmitter() {
 
 /**
  * Enables/disables transmission power by writing high or low to the tx_power_en pin.
- * Usage: Used in setup_transmitter to turn on the power before transmitting.
  */
 inline void set_tx_power_enable(bool enable) {
   digitalWriteFast(tx_power_en, (enable) ? HIGH : LOW);
