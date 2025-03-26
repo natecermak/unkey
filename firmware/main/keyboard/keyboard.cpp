@@ -17,6 +17,12 @@ volatile uint64_t switch_state;
 // TODO: this is too low, for testing only:
 const unsigned long screen_timeout_ms = 10000;
 
+// Useful for debouncing/long presses:
+uint32_t time_of_last_press_ms;
+
+// Runs poller at 100 Hz:
+const int keyboard_poller_period_usec = 10000;
+
 /**
  * Configures the keyboard polling mechanism by setting up input/output pins and starting a timer that calls
  * poll_keyboardat regular intervals.

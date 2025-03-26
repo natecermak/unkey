@@ -1,29 +1,33 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <Arduino.h>
-#include <time.h>   // For time_t
+// ==================================================================
+// config.h
+// Central UI layout, messaging constants, and shared types
+// ==================================================================
+
+#include <time.h>
 
 //----------------------------------------
 // Chat Display Configuration
 //----------------------------------------
-#define CHAT_BOX_LINE_PADDING 11      // Extra vertical space between chat lines
-#define CHAT_BOX_START_X      0       // Chat box horizontal offset (0 is flush to left screen bound)
-#define CHAT_BOX_START_Y      25      // Chat box vertical offset (0 is flush to top screen bound)
-#define CHAT_BOX_WIDTH        235
-#define CHAT_BOX_HEIGHT       201
-#define CHAT_BOX_BOTTOM_PADDING 3
-#define CHAT_WRAP_LIMIT       16      // Maximum characters per line before wrapping
-#define LINE_HEIGHT           10      // Height of each text line in pixels
+#define CHAT_BOX_LINE_PADDING       11      // Extra vertical space between chat lines
+#define CHAT_BOX_START_X            0       // Chat box horizontal offset (0 is flush to left screen bound)
+#define CHAT_BOX_START_Y            25      // Chat box vertical offset (0 is flush to top screen bound)
+#define CHAT_BOX_WIDTH              235
+#define CHAT_BOX_HEIGHT             201
+#define CHAT_BOX_BOTTOM_PADDING     3
+#define CHAT_WRAP_LIMIT             16      // Maximum characters per line before wrapping
+#define LINE_HEIGHT                 10      // Height of each text line in pixels
 
 //----------------------------------------
 // Text and Buffer Parameters
 //----------------------------------------
-#define CHAR_WIDTH            7       // Width of each character in pixels
-#define MAX_CHAT_MESSAGES     50      // Maximum messages stored in chat history
-#define MAX_NAME_LENGTH       20      // Maximum length for sender/recipient names
-#define MAX_PACKET_SIZE       405     // Maximum packet size (including header/footer)
-#define MAX_TEXT_LENGTH       400     // Maximum length of message text
+#define CHAR_WIDTH                  7       // Width of each character in pixels
+#define MAX_CHAT_MESSAGES           50      // Maximum messages stored in chat history
+#define MAX_NAME_LENGTH             20      // Maximum length for sender/recipient names
+#define MAX_PACKET_SIZE             405     // Maximum packet size (including header/footer)
+#define MAX_TEXT_LENGTH             400     // Maximum length of message text
 
 //----------------------------------------
 // Incoming/Outgoing Message Parameters
@@ -53,21 +57,21 @@
 //----------------------------------------
 // Keyboard Key Indexes
 //----------------------------------------
-#define CAP_KEY_INDEX     3
-#define SYM_KEY_INDEX     40
-#define BACK_KEY_INDEX    36
-#define DEL_KEY_INDEX     37
-#define RET_KEY_INDEX     44
-#define SEND_KEY_INDEX    45
-#define ESC_KEY_INDEX     48
-#define MENU_KEY_INDEX    49
-#define LEFT_KEY_INDEX    47
-#define UP_KEY_INDEX      50
-#define DOWN_KEY_INDEX    51
-#define RIGHT_KEY_INDEX   46
+#define CAP_KEY_INDEX               3
+#define SYM_KEY_INDEX               40
+#define BACK_KEY_INDEX              36
+#define DEL_KEY_INDEX               37
+#define RET_KEY_INDEX               44
+#define SEND_KEY_INDEX              45
+#define ESC_KEY_INDEX               48
+#define MENU_KEY_INDEX              49
+#define LEFT_KEY_INDEX              47
+#define UP_KEY_INDEX                50
+#define DOWN_KEY_INDEX              51
+#define RIGHT_KEY_INDEX             46
 
-const char *KEYBOARD_LAYOUT = "1qa~zsw23edxcfr45tgvbhy67ujnmki89ol?~~p0~ ,.\n           ";
-const char *KEYBOARD_LAYOUT_SYM = "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ ,.\n           ";
+const char* KEYBOARD_LAYOUT     = "1qa~zsw23edxcfr45tgvbhy67ujnmki89ol?~~p0~ ,.\n           ";
+const char* KEYBOARD_LAYOUT_SYM = "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ ,.\n           ";
 
 //----------------------------------------
 // Battery and Display Spacing Configuration
@@ -75,14 +79,8 @@ const char *KEYBOARD_LAYOUT_SYM = "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ 
 #define BATTERY_BOX_HEIGHT          10
 #define SPACE_UNDER_BATTERY_WIDTH   15
 #define BATTERY_BOX_WIDTH           80
-#define SPACE_BESIDE_BATTERY_WIDTH  155   // Typically: CHAT_BOX_WIDTH - BATTERY_BOX_WIDTH
+#define SPACE_BESIDE_BATTERY_WIDTH  155     // Typically: CHAT_BOX_WIDTH - BATTERY_BOX_WIDTH
 #define BORDER_PADDING_Y            6
-
-//----------------------------------------
-// Keyboard Poll Timing
-//----------------------------------------
-uint32_t time_of_last_press_ms; // Useful for debouncing/long presses
-const int keyboard_poller_period_usec = 10000; // Runs poller at 100 Hz:
 
 //----------------------------------------
 // Message and Test Constants
