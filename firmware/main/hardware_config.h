@@ -1,10 +1,9 @@
-#ifndef HARDWARE_CONFIG_H
-#define HARDWARE_CONFIG_H
-
 // ==================================================================
 // hardware_config.h
 // Defines Teensy pin mappings for all peripherals
 // ==================================================================
+#ifndef HARDWARE_CONFIG_H
+#define HARDWARE_CONFIG_H
 
 // ADC input:
 const int readPin_adc_0 = 15;

@@ -1,10 +1,9 @@
-#ifndef CONFIG_H
-#define CONFIG_H
-
 // ==================================================================
 // config.h
 // Central UI layout, messaging constants, and shared types
 // ==================================================================
+#ifndef CONFIG_H
+#define CONFIG_H
 
 #include <time.h>
 

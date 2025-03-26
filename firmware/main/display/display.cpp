@@ -1,23 +1,30 @@
+// ==================================================================
+// display.cpp
+// Handles screen setup, message rendering, and battery display
+// ==================================================================
 #include "display.h"
 #include "../hardware_config.h"
 
-// ------------------- TFT LCD ------------------------------------------- //
-/**
- * Initializing the display using pins assigned above, which - as a reminder - interfaces with these things:
- * - Analog-to-Digital Converter (ADC)
- * - Keyboard or input device
- * - TFT display with ILI9341 controller via SPI
- * - DAC, power control, and a battery monitor
- */
-
+// ------------------------------------------------------------------
+// External globals
+// ------------------------------------------------------------------
 extern char tx_display_buffer[];
 extern uint16_t tx_display_buffer_length;
+
+// ------------------------------------------------------------------
+// State
+// ------------------------------------------------------------------
 
 bool screen_on;
 unsigned long time_of_last_battery_read_ms;
 const unsigned long BATTERY_READ_PERIOD_MS = 1000;
+
 // Initializes the display using pin numbers defined above, which get passed to the constructor:
 ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);
+
+// ------------------------------------------------------------------
+// Functions
+// ------------------------------------------------------------------
 
 /**
  * Draws message character content (incorporating line breaks and text wrapping) in the chat history box for a given message.

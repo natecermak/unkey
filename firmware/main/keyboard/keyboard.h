@@ -1,10 +1,9 @@
-#ifndef KEYBOARD_H
-#define KEYBOARD_H
-
 // ==================================================================
 // keyboard.h
 // Declarations for keyboard polling and hardware key handling
 // ==================================================================
+#ifndef KEYBOARD_H
+#define KEYBOARD_H
 
 void setup_keyboard_poller();
 
