@@ -1,3 +1,7 @@
+// ==================================================================
+// keyboard.cpp
+// Handles keyboard scanning, polling, and input processing
+// ==================================================================
 #include "keyboard.h"
 #include "../hardware_config.h"
 #include "../config.h"
@@ -5,13 +9,18 @@
 #include "../chat/chat_logic.h"
 #include <Arduino.h>
 
+// ------------------------------------------------------------------
+// State
+// ------------------------------------------------------------------
+
 IntervalTimer keyboard_poller_timer;
 
 extern const int keyboard_poller_period_usec;
 extern bool screen_on;
 extern char tx_display_buffer[];
 
-// Will likely store the state of keys (??) - using a 64 bit integer => 64 key states, i.e. 1 for pressed, 0 for not:
+// Will likely store the state of keys (??) - using a 64 bit integer
+// => 64 key states, i.e. 1 for pressed, 0 for not:
 volatile uint64_t switch_state;
 
 // TODO: this is too low, for testing only:
@@ -23,9 +32,13 @@ uint32_t time_of_last_press_ms;
 // Runs poller at 100 Hz:
 const int keyboard_poller_period_usec = 10000;
 
+// ------------------------------------------------------------------
+// Functions
+// ------------------------------------------------------------------
+
 /**
- * Configures the keyboard polling mechanism by setting up input/output pins and starting a timer that calls
- * poll_keyboardat regular intervals.
+ * Configures the keyboard polling mechanism by setting up input/output pins
+ * and starting a timer that calls poll_keyboard at regular intervals.
  */
 void setup_keyboard_poller() {
   switch_state = 0;
@@ -43,8 +56,8 @@ void setup_keyboard_poller() {
 }
 
 /**
- * Calculates the integer base 2 logarithm of x to give the position of the highest set bit.
- * Usage: Gets called by poll_keyboard to detect key presses
+ * Calculates the integer base-2 logarithm of x.
+ * Returns the position of the highest set bit.
  */
 static int ilog2(uint64_t x) {
   int i = 0;
@@ -56,9 +69,9 @@ static int ilog2(uint64_t x) {
 }
 
 /**
- * Reads the state of a keyboard by polling a shift register connected to the keyboard’s data and clock lines.
- * It detects new key presses, updates the screen, and processes specific keys like CAPS, SYM, and SEND.
- * It also uses ilog2() to identify the index of the pressed key.
+ * Reads the state of the keyboard by polling shift registers.
+ * Detects new key presses, updates the screen, and processes
+ * actions for CAPS, SYM, SEND, arrow keys, and printable keys.
  */
 void poll_keyboard(ChatBufferState* state) {
   // static int modifier = 0;
