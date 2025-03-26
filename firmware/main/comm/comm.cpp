@@ -116,14 +116,9 @@ void setup_receiver() {
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
   //adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
 
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wstrict-aliasing"
-
   // Sets up DMA:
   // Note: The following line raises a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but in this case this warning can be safely ignored
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
-
-  #pragma GCC diagnostic pop
 
   // Each time you read from adc you get 2 bytes, so that's why 2x:
   dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
