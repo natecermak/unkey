@@ -10,14 +10,18 @@
 #include <Arduino.h>
 
 // ------------------------------------------------------------------
-// State
+// External globals
 // ------------------------------------------------------------------
-
-IntervalTimer keyboard_poller_timer;
 
 extern const int keyboard_poller_period_usec;
 extern bool screen_on;
 extern char tx_display_buffer[];
+
+// ------------------------------------------------------------------
+// State
+// ------------------------------------------------------------------
+
+IntervalTimer keyboard_poller_timer;
 
 // Will likely store the state of keys (??) - using a 64 bit integer
 // => 64 key states, i.e. 1 for pressed, 0 for not:

@@ -8,9 +8,6 @@
 #include <ILI9341_t3n.h>
 #include "../config.h"
 
-// Global display object (instantiated in main.ino):
-extern ILI9341_t3n tft;
-
 void draw_message_text(int length_limit, const char *text_to_draw, int text_start_x, int text_start_y, int wrap_limit);
 
 void display_chat_history(ChatBufferState* state);

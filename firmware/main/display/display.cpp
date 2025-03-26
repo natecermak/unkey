@@ -8,6 +8,7 @@
 // ------------------------------------------------------------------
 // External globals
 // ------------------------------------------------------------------
+
 extern char tx_display_buffer[];
 extern uint16_t tx_display_buffer_length;
 

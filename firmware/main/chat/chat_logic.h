@@ -1,3 +1,7 @@
+// ==================================================================
+// chat_logic.h
+// Handles chat buffer state, message logging, and packetization
+// ==================================================================
 #ifndef CHAT_LOGIC_H
 #define CHAT_LOGIC_H
 

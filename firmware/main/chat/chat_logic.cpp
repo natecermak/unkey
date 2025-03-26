@@ -1,13 +1,23 @@
+// ==================================================================
+// chat_logic.cpp
+// Handles chat buffer state, message logging, and packetization
+// ==================================================================
 #include "chat_logic.h"
 #include "../display/display.h"
 #include <string.h>  // for strncpy
 #include <time.h>    // for time()
 
+// ------------------------------------------------------------------
+// State
+// ------------------------------------------------------------------
+
 IntervalTimer test_incoming_message;
-
 static ChatBufferState chat_buffer_state = {0, 0, 0, {}};
-
 int incoming_message_count = 0;
+
+// ------------------------------------------------------------------
+// Functions
+// ------------------------------------------------------------------
 
 void _debug_print_message(message_t msg) {
   // Serial.printf("Timestamp: %lu \n", msg.timestamp); // %d would also work, %lu is long unsigned
@@ -99,6 +109,11 @@ void incoming_message_callback() {
   }
 }
 
+/**
+ * Returns a pointer to the internal chat buffer state.
+ * Used by other modules (e.g., keyboard input) to read from or update chat history
+ * without directly exposing the underlying static variable.
+ */
 ChatBufferState* get_chat_buffer_state() {
   return &chat_buffer_state;
 }
