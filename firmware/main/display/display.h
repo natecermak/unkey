@@ -12,4 +12,8 @@ void draw_message_text(int length_limit, const char *text_to_draw, int text_star
 
 void display_chat_history(ChatBufferState* state);
 
+static void reset_tx_display_buffer();
+
+static void redraw_typing_box();
+
 #endif
