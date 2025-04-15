@@ -3,7 +3,7 @@
 // Handles screen setup, message rendering, and battery display
 // ==================================================================
 #include "display.h"
-#include "../hardware_config.h"
+#include "config.h"
 
 // ------------------------------------------------------------------
 // External globals

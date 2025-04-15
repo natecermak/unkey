@@ -3,7 +3,7 @@
 // Handles chat buffer state, message logging, and packetization
 // ==================================================================
 #include "chat_logic.h"
-#include "../display/display.h"
+#include "display.h"
 #include <string.h>  // for strncpy
 #include <time.h>    // for time()
 

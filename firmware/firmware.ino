@@ -1,5 +1,5 @@
 // ==================================================================
-// main.ino
+// firmware.ino
 // Entry point: initializes all modules and runs main event loop
 // ==================================================================
 #include <ADC.h>
@@ -10,17 +10,11 @@
 
 #include "config.h"
 #include "hardware_config.h"
-#include "comm/goertzel.h"
-#include "comm/comm.h"
-#include "chat/chat_logic.h"
-#include "display/display.h"
-#include "keyboard/keyboard.h"
-
-#include "comm/goertzel.cpp"
-#include "comm/comm.cpp"
-#include "chat/chat_logic.cpp"
-#include "display/display.cpp"
-#include "keyboard/keyboard.cpp"
+#include "goertzel.h"
+#include "comm.h"
+#include "chat_logic.h"
+#include "display.h"
+#include "keyboard.h"
 
 void setup() {
   // Initializes serial communication with Teensy at baud rate of 9600 bps:

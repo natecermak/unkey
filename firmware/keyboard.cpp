@@ -3,10 +3,10 @@
 // Handles keyboard scanning, polling, and input processing
 // ==================================================================
 #include "keyboard.h"
-#include "../hardware_config.h"
-#include "../config.h"
-#include "../display/display.h"
-#include "../chat/chat_logic.h"
+#include "hardware_config.h"
+#include "config.h"
+#include "display.h"
+#include "chat_logic.h"
 #include <Arduino.h>
 
 // ------------------------------------------------------------------

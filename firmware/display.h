@@ -6,7 +6,7 @@
 #define DISPLAY_H
 
 #include <ILI9341_t3n.h>
-#include "../config.h"
+#include "config.h"
 
 void draw_message_text(int length_limit, const char *text_to_draw, int text_start_x, int text_start_y, int wrap_limit);
 
