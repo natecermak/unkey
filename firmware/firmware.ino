@@ -14,9 +14,6 @@
 #include "hardware_config.h"
 #include "keyboard.h"
 
-// #include "display.cpp"
-
-
 void setup() {
   // Initializes serial communication with Teensy at baud rate of 9600 bps:
   Serial.begin(9600);

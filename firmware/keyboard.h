@@ -12,6 +12,4 @@ constexpr int keyboard_poller_period_usec = 1000;
 
 void setup_keyboard_poller();
 
-void poll_keyboard(ChatBufferState* state);
-
 #endif

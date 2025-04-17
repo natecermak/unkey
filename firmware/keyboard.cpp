@@ -39,25 +39,6 @@ uint32_t time_of_last_press_ms;
 // ------------------------------------------------------------------
 
 /**
- * Configures the keyboard polling mechanism by setting up input/output pins
- * and starting a timer that calls poll_keyboard at regular intervals.
- */
-void setup_keyboard_poller() {
-  switch_state = 0;
-
-  // Sets up SPI:
-  pinMode(kb_load_n_pin, OUTPUT);
-  digitalWrite(kb_load_n_pin, HIGH);
-  pinMode(kb_clock_pin, OUTPUT);
-  pinMode(kb_data_pin, INPUT);
-
-  // Starts timer:
-  if (!keyboard_poller_timer.begin([]() { poll_keyboard(get_chat_buffer_state()); }, keyboard_poller_period_usec)) {
-    Serial.println("Failed setting up poller");
-  }
-}
-
-/**
  * Calculates the integer base-2 logarithm of x.
  * Returns the position of the highest set bit.
  */
@@ -178,5 +159,24 @@ void poll_keyboard(ChatBufferState* state) {
   } else if (screen_on && millis() - time_of_last_press_ms > screen_timeout_ms) {
     screen_on = false;
     //digitalWrite(tft_led_pin, LOW);
+  }
+}
+
+/**
+ * Configures the keyboard polling mechanism by setting up input/output pins
+ * and starting a timer that calls poll_keyboard at regular intervals.
+ */
+void setup_keyboard_poller() {
+  switch_state = 0;
+
+  // Sets up SPI:
+  pinMode(kb_load_n_pin, OUTPUT);
+  digitalWrite(kb_load_n_pin, HIGH);
+  pinMode(kb_clock_pin, OUTPUT);
+  pinMode(kb_data_pin, INPUT);
+
+  // Starts timer:
+  if (!keyboard_poller_timer.begin([]() { poll_keyboard(get_chat_buffer_state()); }, keyboard_poller_period_usec)) {
+    Serial.println("Failed setting up poller");
   }
 }
