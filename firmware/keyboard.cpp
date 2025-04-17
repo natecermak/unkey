@@ -50,10 +50,10 @@ void setup_keyboard_poller() {
   switch_state = 0;
 
   // Sets up SPI:
-  pinMode(kb_load_n, OUTPUT);
-  digitalWrite(kb_load_n, HIGH);
-  pinMode(kb_clock, OUTPUT);
-  pinMode(kb_data, INPUT);
+  pinMode(kb_load_n_pin, OUTPUT);
+  digitalWrite(kb_load_n_pin, HIGH);
+  pinMode(kb_clock_pin, OUTPUT);
+  pinMode(kb_data_pin, INPUT);
 
   // Starts timer:
   if (!keyboard_poller_timer.begin([]() { poll_keyboard(get_chat_buffer_state()); }, keyboard_poller_period_usec)) {
@@ -83,23 +83,23 @@ void poll_keyboard(ChatBufferState* state) {
   // static int modifier = 0;
 
   // Latches keyboard state into shift registers
-  // kb_load_n is an output pin which pulses a signal here from LOW to HIGH
+  // kb_load_n_pin is an output pin which pulses a signal here from LOW to HIGH
   // low to hi transmission lets shift reg know to record keyboard state (8 bits per registr)
-  digitalWrite(kb_load_n, LOW);
+  digitalWrite(kb_load_n_pin, LOW);
   delayNanoseconds(5);
-  digitalWrite(kb_load_n, HIGH);
+  digitalWrite(kb_load_n_pin, HIGH);
   delayNanoseconds(5);
 
   // Reads 64 bits of shift register, takes 2.63us, runs at 23 MHz
   // Note: bitbang to avoid taking up an SPI peripheral. Requires VERY little CPU time
   uint64_t read_buffer = 0;
   for (int bit = 0; bit < SCAN_CHAIN_LENGTH; bit++) {
-    read_buffer |= (uint64_t)digitalReadFast(kb_data) << ((SCAN_CHAIN_LENGTH - 1) - bit); // kb_data is the state of each key press
-    digitalWriteFast(kb_clock, LOW);
-    digitalWriteFast(kb_clock, HIGH);
+    read_buffer |= (uint64_t)digitalReadFast(kb_data_pin) << ((SCAN_CHAIN_LENGTH - 1) - bit); // kb_data_pin is the state of each key press
+    digitalWriteFast(kb_clock_pin, LOW);
+    digitalWriteFast(kb_clock_pin, HIGH);
     delayNanoseconds(10);
   }
-  digitalWriteFast(kb_clock, LOW);
+  digitalWriteFast(kb_clock_pin, LOW);
 
   // Compares results to previous one to detect new key presses
   uint64_t new_press = ~read_buffer & switch_state;
@@ -110,7 +110,7 @@ void poll_keyboard(ChatBufferState* state) {
 
     if (!screen_on) {
       screen_on = true;
-      digitalWrite(tft_led, HIGH);
+      digitalWrite(tft_led_pin, HIGH);
     } else {
       uint8_t key_index = ilog2(new_press) - 1;
 
@@ -181,6 +181,6 @@ void poll_keyboard(ChatBufferState* state) {
     }
   } else if (screen_on && millis() - time_of_last_press_ms > screen_timeout_ms) {
     screen_on = false;
-    //digitalWrite(tft_led, LOW);
+    //digitalWrite(tft_led_pin, LOW);
   }
 }

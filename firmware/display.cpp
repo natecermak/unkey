@@ -21,7 +21,7 @@ extern char tx_display_buffer[];
 bool screen_on;
 
 // Initializes the display using pin numbers defined above, which get passed to the constructor:
-ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);
+ILI9341_t3n tft = ILI9341_t3n(tft_cs_pin, tft_dc_pin, tft_reset_pin, tft_mosi_pin, tft_sck_pin, tft_miso_pin);
 
 // ------------------------------------------------------------------
 // Functions
@@ -180,12 +180,12 @@ void reset_tx_display_buffer() {
  * Initializes the TFT screen, sets the screen orientation, clears the screen, and draws some basic UI elements.
  */
 void setup_screen() {
-  pinMode(tft_led, OUTPUT);
+  pinMode(tft_led_pin, OUTPUT);
   // Responsible for turning screen light on:
-  digitalWrite(tft_led, HIGH);
+  digitalWrite(tft_led_pin, HIGH);
   screen_on = true;
 
-  pinMode(tft_sck, OUTPUT);
+  pinMode(tft_sck_pin, OUTPUT);
 
   tft.begin();
   tft.setRotation(2);

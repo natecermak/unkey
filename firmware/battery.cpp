@@ -18,7 +18,7 @@ const unsigned long BATTERY_READ_PERIOD_MS = 1000;
  */
 inline float read_battery_voltage() {
   // 2.0 for 1:1 voltage divider, 3.3V is max ADC voltage, and ADC is 12-bit (4096 values)
-  return 2.0 * analogRead(battery_monitor) * 3.3 / 4096;
+  return 2.0 * analogRead(battery_monitor_pin) * 3.3 / 4096;
 }
 
 /**

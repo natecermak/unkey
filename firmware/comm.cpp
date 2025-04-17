@@ -89,9 +89,9 @@ void write_to_dac(uint8_t address, uint16_t value) {
   buf[2] = (uint8_t)value;
 
   SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
-  digitalWrite(dac_cs, LOW);
+  digitalWrite(dac_cs_pin, LOW);
   SPI.transfer(buf, 3);
-  digitalWrite(dac_cs, HIGH);
+  digitalWrite(dac_cs_pin, HIGH);
   SPI.endTransaction();
 }
 
@@ -100,8 +100,8 @@ void write_to_dac(uint8_t address, uint16_t value) {
  * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to a buffer super duper efficiently.
  */
 void setup_receiver() {
-  // Sets readPin_adc_0 as the input pin:
-  pinMode(readPin_adc_0, INPUT);
+  // Sets readPin_adc_0_pin as the input pin:
+  pinMode(readPin_adc_0_pin, INPUT);
 
   // Initializes Goertzel filters (TODO: Hardcoded frequencies here):
   for (int j = 0; j < gs_len; j++) {
@@ -133,7 +133,7 @@ void setup_receiver() {
   // Enables the DMA channel:
   dma_ch1.enable();
   adc->adc0->enableDMA();
-  adc->adc0->startSingleRead(readPin_adc_0);
+  adc->adc0->startSingleRead(readPin_adc_0_pin);
   // This actually determines how fast to sample the signal, and starts timer to initiate dma transfer from adc to memory once 2x buffer size bytes reached
   adc->adc0->startTimer(adc_frequency);
 }
@@ -187,10 +187,10 @@ void set_charge_amplifier_gain(uint8_t gain_index) {
  * Configures gain and voltage references for the DAC.
  */
 void setup_transmitter() {
-  pinMode(tx_power_en, OUTPUT);
-  pinMode(xdcr_sw, OUTPUT);
-  pinMode(dac_cs, OUTPUT);
-  digitalWrite(dac_cs, HIGH);
+  pinMode(tx_power_en_pin, OUTPUT);
+  pinMode(xdcr_sw_pin, OUTPUT);
+  pinMode(dac_cs_pin, OUTPUT);
+  digitalWrite(dac_cs_pin, HIGH);
 
   // TODO: FOR TESTING ONLY:
   set_tx_power_enable(true);  // tested: works
@@ -200,8 +200,8 @@ void setup_transmitter() {
 }
 
 /**
- * Enables/disables transmission power by writing high or low to the tx_power_en pin.
+ * Enables/disables transmission power by writing high or low to the tx_power_en_pin pin.
  */
 inline void set_tx_power_enable(bool enable) {
-  digitalWriteFast(tx_power_en, (enable) ? HIGH : LOW);
+  digitalWriteFast(tx_power_en_pin, (enable) ? HIGH : LOW);
 }
