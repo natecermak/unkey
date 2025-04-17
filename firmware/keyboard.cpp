@@ -15,7 +15,6 @@
 // External globals
 // ------------------------------------------------------------------
 
-extern const int keyboard_poller_period_usec;
 extern bool screen_on;
 extern char tx_display_buffer[];
 
@@ -23,7 +22,7 @@ extern char tx_display_buffer[];
 // State
 // ------------------------------------------------------------------
 
-IntervalTimer keyboard_poller_timer;
+static IntervalTimer keyboard_poller_timer;
 
 // Will likely store the state of keys (??) - using a 64 bit integer
 // => 64 key states, i.e. 1 for pressed, 0 for not:
@@ -34,9 +33,6 @@ const unsigned long screen_timeout_ms = 10000;
 
 // Useful for debouncing/long presses:
 uint32_t time_of_last_press_ms;
-
-// Runs poller at 100 Hz:
-const int keyboard_poller_period_usec = 10000;
 
 // ------------------------------------------------------------------
 // Functions
