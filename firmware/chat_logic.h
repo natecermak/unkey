@@ -5,9 +5,13 @@
 #ifndef CHAT_LOGIC_H
 #define CHAT_LOGIC_H
 
-#include "../config.h"
+#include "config.h"
+#include "comm.h"
+#include <IntervalTimer.h>  // Required for the type
 
 ChatBufferState* get_chat_buffer_state();
+
+extern IntervalTimer test_incoming_message;
 
 void _debug_print_message(message_t msg);
 

@@ -1,6 +1,6 @@
 // ==================================================================
 // display.h
-// Handles screen setup, drawing messages, and battery display
+// Handles screen setup and drawing messages
 // ==================================================================
 #ifndef DISPLAY_H
 #define DISPLAY_H
@@ -16,9 +16,9 @@ void poll_battery();
 
 inline float read_battery_voltage();
 
-static void reset_tx_display_buffer();
+void reset_tx_display_buffer();
 
-static void redraw_typing_box();
+void redraw_typing_box();
 
 void setup_screen();
 

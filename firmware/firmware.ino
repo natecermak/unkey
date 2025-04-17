@@ -2,19 +2,23 @@
 // firmware.ino
 // Entry point: initializes all modules and runs main event loop
 // ==================================================================
-#include <ADC.h>
-#include <DMAChannel.h>
-#include <ILI9341_t3n.h>
+#include <ADC.h> // need?
+#include <DMAChannel.h> // need?
+#include <ILI9341_t3n.h> // need?
 #include <SPI.h>
 #include <Wire.h>
 
-#include "config.h"
-#include "hardware_config.h"
-#include "goertzel.h"
-#include "comm.h"
+// #include "battery.h"
 #include "chat_logic.h"
+#include "comm.h"
+#include "config.h"
 #include "display.h"
+#include "goertzel.h"
+#include "hardware_config.h"
 #include "keyboard.h"
+
+// #include "display.cpp"
+
 
 void setup() {
   // Initializes serial communication with Teensy at baud rate of 9600 bps:

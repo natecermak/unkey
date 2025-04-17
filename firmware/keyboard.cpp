@@ -5,6 +5,7 @@
 #include "keyboard.h"
 #include "hardware_config.h"
 #include "config.h"
+#include "comm.h"
 #include "display.h"
 #include "chat_logic.h"
 #include <Arduino.h>
@@ -25,7 +26,7 @@ IntervalTimer keyboard_poller_timer;
 
 // Will likely store the state of keys (??) - using a 64 bit integer
 // => 64 key states, i.e. 1 for pressed, 0 for not:
-volatile uint64_t switch_state;
+static volatile uint64_t switch_state;
 
 // TODO: this is too low, for testing only:
 const unsigned long screen_timeout_ms = 10000;

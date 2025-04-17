@@ -68,9 +68,8 @@
 #define UP_KEY_INDEX                50
 #define DOWN_KEY_INDEX              51
 #define RIGHT_KEY_INDEX             46
-
-const char* KEYBOARD_LAYOUT     = "1qa~zsw23edxcfr45tgvbhy67ujnmki89ol?~~p0~ ,.\n           ";
-const char* KEYBOARD_LAYOUT_SYM = "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ ,.\n           ";
+#define KEYBOARD_LAYOUT             "1qa~zsw23edxcfr45tgvbhy67ujnmki89ol?~~p0~ ,.\n           "
+#define KEYBOARD_LAYOUT_SYM         "!@#$%^&*()`~-_=+:;\'\"[]{}|\\/<>~~zxcvbnm?~~ ,.\n           "
 
 //----------------------------------------
 // Battery and Display Spacing Configuration

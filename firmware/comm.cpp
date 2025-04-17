@@ -2,24 +2,26 @@
 // comm.cpp
 // Handles analog signal transmission, reception, and DSP setup
 // ==================================================================
-#include "comm.h"
 #include <Arduino.h> // for digitalWriteFast
+#include <ADC.h>
+#include <DMAChannel.h>
+#include <SPI.h>
+#include <Wire.h>
+
+#include "comm.h"
+#include "config.h"
+#include "hardware_config.h"
+#include "goertzel.h"
 
 // ------------------------------------------------------------------
 // State
 // ------------------------------------------------------------------
 
 char tx_display_buffer[MAX_TEXT_LENGTH];
-uint16_t tx_display_buffer_length;
+uint16_t tx_display_buffer_length = 0;
 
 ADC *adc = new ADC();
 DMAChannel dma_ch1;
-
-// ADC will sample at freq of 81.92 kHz:
-const uint32_t adc_frequency = 81920;
-
-// Size of buffer where ADC data will be stored:
-const uint32_t buffer_size = 10240;
 
 // Creates dma_adc_buff1 buffer:
 DMAMEM static volatile uint16_t __attribute__((aligned(32))) dma_adc_buff1[buffer_size];

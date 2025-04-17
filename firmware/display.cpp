@@ -1,16 +1,18 @@
 // ==================================================================
 // display.cpp
-// Handles screen setup, message rendering, and battery display
+// Handles screen setup and message rendering
 // ==================================================================
 #include "display.h"
+#include "hardware_config.h"
 #include "config.h"
+#include "comm.h"
 
 // ------------------------------------------------------------------
 // External globals
 // ------------------------------------------------------------------
 
 extern char tx_display_buffer[];
-extern uint16_t tx_display_buffer_length;
+// extern uint16_t tx_display_buffer_length;
 
 // ------------------------------------------------------------------
 // State
@@ -160,7 +162,7 @@ void display_chat_history(ChatBufferState* state) {
  * Clears the display area where typed text is shown and redraws the boundary of the text box.
  * It also reprints the current contents of the tx_display_buffer.
  */
-static void redraw_typing_box() {
+void redraw_typing_box() {
   tft.fillRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_WHITE);
   tft.drawRect(TYPING_BOX_START_X, TYPING_BOX_START_Y, CHAT_BOX_WIDTH, TYPING_BOX_HEIGHT, ILI9341_RED);
   draw_message_text(tx_display_buffer_length, tx_display_buffer, TYPING_CURSOR_X, TYPING_CURSOR_Y, SEND_WRAP_LIMIT);
@@ -170,7 +172,7 @@ static void redraw_typing_box() {
  * Resets the buffer that stores the text being typed on the keyboard. It clears the buffer and resets its length.
  * Keyboard will write to this, screen will display it.
  */
-static void reset_tx_display_buffer() {
+void reset_tx_display_buffer() {
   memset(tx_display_buffer, '\0', MAX_TEXT_LENGTH);
   // Fills buffer with null chars ('\0'):
   tx_display_buffer_length = 0;
