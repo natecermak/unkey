@@ -10,8 +10,8 @@
 #include "display.h"
 #include "hardware_config.h"
 
-unsigned long time_of_last_battery_read_ms = 0;
-const unsigned long BATTERY_READ_PERIOD_MS = 1000;
+static unsigned long time_of_last_battery_read_ms = 0;
+static const unsigned long BATTERY_READ_PERIOD_MS = 1000;
 
 /**
  * Used in poll_battery to display the current battery level on the screen.

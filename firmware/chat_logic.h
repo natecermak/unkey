@@ -10,9 +10,9 @@
 #include "comm.h"
 #include "config.h"
 
-ChatBufferState* get_chat_buffer_state();
-
 extern IntervalTimer test_incoming_message;
+
+ChatBufferState* get_chat_buffer_state();
 
 void send_message(const char* message_text);
 

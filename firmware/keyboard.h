@@ -8,7 +8,7 @@
 #include "chat_logic.h"
 
 // Runs poller at 100 Hz:
-constexpr int keyboard_poller_period_usec = 1000;
+static const int keyboard_poller_period_usec = 1000;
 
 void setup_keyboard_poller();
 
