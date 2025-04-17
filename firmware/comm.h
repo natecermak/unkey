@@ -1,11 +1,12 @@
 // ==================================================================
 // comm.h
-// Handles analog signal transmission, reception, and DSP setup
+// Declarations for analog signal transmission, reception, and DSP setup
 // ==================================================================
 #ifndef COMM_H
 #define COMM_H
 
 #include <stdint.h>
+
 #include "config.h"
 
 // ADC will sample at freq of 81.92 kHz:

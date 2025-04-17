@@ -2,25 +2,23 @@
 // display.cpp
 // Handles screen setup and message rendering
 // ==================================================================
+#include "battery.h"
+#include "comm.h"
+#include "config.h"
 #include "display.h"
 #include "hardware_config.h"
-#include "config.h"
-#include "comm.h"
 
 // ------------------------------------------------------------------
 // External globals
 // ------------------------------------------------------------------
 
 extern char tx_display_buffer[];
-// extern uint16_t tx_display_buffer_length;
 
 // ------------------------------------------------------------------
 // State
 // ------------------------------------------------------------------
 
 bool screen_on;
-unsigned long time_of_last_battery_read_ms;
-const unsigned long BATTERY_READ_PERIOD_MS = 1000;
 
 // Initializes the display using pin numbers defined above, which get passed to the constructor:
 ILI9341_t3n tft = ILI9341_t3n(tft_cs, tft_dc, tft_reset, tft_mosi, tft_sck, tft_miso);
@@ -200,29 +198,4 @@ void setup_screen() {
   tft.setCursor(TYPING_CURSOR_X, TYPING_CURSOR_Y);
 
   reset_tx_display_buffer();
-}
-
-/**
- * Used in poll_battery to display the current battery level on the screen.
- */
-inline float read_battery_voltage() {
-  // 2.0 for 1:1 voltage divider, 3.3V is max ADC voltage, and ADC is 12-bit (4096 values)
-  return 2.0 * analogRead(battery_monitor) * 3.3 / 4096;
-}
-
-/**
- * Periodically reads and displays the battery voltage on the screen.
- */
-void poll_battery() {
-  if (millis() - time_of_last_battery_read_ms > BATTERY_READ_PERIOD_MS) {
-    time_of_last_battery_read_ms += BATTERY_READ_PERIOD_MS;
-    float battery_volts = read_battery_voltage();
-
-    tft.setTextColor(ILI9341_BLACK, ILI9341_WHITE);
-    int16_t x, y;
-    tft.getCursor(&x, &y);
-    tft.setCursor(2, 2);
-    tft.printf("battery %.2fV", battery_volts);
-    tft.setCursor(x, y);
-  }
 }

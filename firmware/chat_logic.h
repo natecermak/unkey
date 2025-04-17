@@ -1,13 +1,14 @@
 // ==================================================================
 // chat_logic.h
-// Handles chat buffer state, message logging, and packetization
+// Declarations for chat buffer state, message logging, and packetization
 // ==================================================================
 #ifndef CHAT_LOGIC_H
 #define CHAT_LOGIC_H
 
-#include "config.h"
+#include <IntervalTimer.h>
+
 #include "comm.h"
-#include <IntervalTimer.h>  // Required for the type
+#include "config.h"
 
 ChatBufferState* get_chat_buffer_state();
 

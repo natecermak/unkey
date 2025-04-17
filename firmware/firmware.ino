@@ -2,13 +2,10 @@
 // firmware.ino
 // Entry point: initializes all modules and runs main event loop
 // ==================================================================
-#include <ADC.h> // need?
-#include <DMAChannel.h> // need?
-#include <ILI9341_t3n.h> // need?
 #include <SPI.h>
 #include <Wire.h>
 
-// #include "battery.h"
+#include "battery.h"
 #include "chat_logic.h"
 #include "comm.h"
 #include "config.h"

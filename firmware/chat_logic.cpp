@@ -2,10 +2,11 @@
 // chat_logic.cpp
 // Handles chat buffer state, message logging, and packetization
 // ==================================================================
-#include "chat_logic.h"
-#include "display.h"
 #include <string.h>  // for strncpy
 #include <time.h>    // for time()
+
+#include "chat_logic.h"
+#include "display.h"
 
 // ------------------------------------------------------------------
 // State

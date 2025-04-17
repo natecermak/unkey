@@ -2,13 +2,14 @@
 // keyboard.cpp
 // Handles keyboard scanning, polling, and input processing
 // ==================================================================
-#include "keyboard.h"
-#include "hardware_config.h"
-#include "config.h"
-#include "comm.h"
-#include "display.h"
-#include "chat_logic.h"
 #include <Arduino.h>
+
+#include "chat_logic.h"
+#include "comm.h"
+#include "config.h"
+#include "display.h"
+#include "hardware_config.h"
+#include "keyboard.h"
 
 // ------------------------------------------------------------------
 // External globals
