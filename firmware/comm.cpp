@@ -17,6 +17,12 @@
 // State
 // ------------------------------------------------------------------
 
+// ADC will sample at freq of 81.92 kHz:
+static const uint32_t adc_frequency = 81920;
+
+// Size of buffer where ADC data will be stored:
+static const uint32_t buffer_size = 10240;
+
 char tx_display_buffer[MAX_TEXT_LENGTH];
 uint16_t tx_display_buffer_length = 0;
 
@@ -27,15 +33,15 @@ DMAChannel dma_ch1;
 DMAMEM static volatile uint16_t __attribute__((aligned(32))) dma_adc_buff1[buffer_size];
 uint16_t adc_buffer_copy[buffer_size];
 
-uint8_t print_ctr = 0;
-const uint8_t gs_len = 10;
+static uint8_t print_ctr = 0;
+static const uint8_t gs_len = 10;
 
 // An array that will store state for the Goertzel algo - each goertzel_state obj
 // holds data to compute G algo for that frequency:
 goertzel_state gs[gs_len];
 
 // Charge amplifier gain:
-const int adg728_i2c_address = 76;
+static const int adg728_i2c_address = 76;
 
 // ------------------------------------------------------------------
 // Functions
@@ -187,7 +193,7 @@ void setup_receiver() {
   //adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
 
   // Sets up DMA:
-  // Note: The following line raises a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but in this case this warning can be safely ignored
+  // Note: The following line may raise a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but can be safely ignored
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
 
   // Each time you read from adc you get 2 bytes, so that's why 2x:

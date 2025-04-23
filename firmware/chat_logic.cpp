@@ -14,7 +14,7 @@
 
 IntervalTimer test_incoming_message;
 static ChatBufferState chat_buffer_state = {0, 0, 0, {}};
-int incoming_message_count = 0;
+static int incoming_message_count = 0;
 
 // ------------------------------------------------------------------
 // Functions

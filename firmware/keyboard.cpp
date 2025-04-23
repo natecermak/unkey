@@ -12,15 +12,11 @@
 #include "keyboard.h"
 
 // ------------------------------------------------------------------
-// External globals
+// State
 // ------------------------------------------------------------------
 
 extern bool screen_on;
 extern char tx_display_buffer[];
-
-// ------------------------------------------------------------------
-// State
-// ------------------------------------------------------------------
 
 static IntervalTimer keyboard_poller_timer;
 
@@ -29,10 +25,13 @@ static IntervalTimer keyboard_poller_timer;
 static volatile uint64_t switch_state;
 
 // TODO: this is too low, for testing only:
-const unsigned long screen_timeout_ms = 10000;
+static const unsigned long screen_timeout_ms = 10000;
 
 // Useful for debouncing/long presses:
-uint32_t time_of_last_press_ms;
+static uint32_t time_of_last_press_ms;
+
+// Runs poller at 100 Hz:
+static const int keyboard_poller_period_usec = 1000;
 
 // ------------------------------------------------------------------
 // Functions

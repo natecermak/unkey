@@ -9,15 +9,10 @@
 #include "hardware_config.h"
 
 // ------------------------------------------------------------------
-// External globals
-// ------------------------------------------------------------------
-
-extern char tx_display_buffer[];
-
-// ------------------------------------------------------------------
 // State
 // ------------------------------------------------------------------
 
+extern char tx_display_buffer[];
 bool screen_on;
 
 // Initializes the display using pin numbers defined above, which get passed to the constructor:
