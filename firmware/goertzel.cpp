@@ -1,4 +1,9 @@
+// ==================================================================
+// goertzel.cpp
+// Implements the Goertzel algorithm for detecting specific frequencies
+// ==================================================================
 #include <math.h>  // for PI
+
 #include "goertzel.h"
 
 void initialize_goertzel(goertzel_state *g, float f0, float fs) {
@@ -6,7 +11,7 @@ void initialize_goertzel(goertzel_state *g, float f0, float fs) {
   g->cos_w0 = cos(g->w0);
   g->sin_w0 = sin(g->w0);
   g->a1 = 2 * g->cos_w0;
-  // initialize filters to 0 
+  // initialize filters to 0
   g->s = 0;
   g->s_z1 = 0;
   g->n = 0;

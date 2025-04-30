@@ -114,3 +114,18 @@ v1.3 pcb
  - [X] fix TFT connector pin numbering (it's backwards from the connector)
  - [X] make an attempt at a BOM
 
+---
+
+## Firmware File Organization
+
+```
+/firmware
+├── firmware.ino            # Entry point: setup(), loop(), high-level orchestration
+├── config.h                # Shared constants, types, UI/chat/layout settings
+├── hardware_config.h       # Pin assignments and hardware setup
+├── chat_logic.cpp/h        # Message buffer, scrolling, state management
+├── display.cpp/h           # Drawing chat, keyboard, cursor
+├── keyboard.cpp/h          # Polling, key states, modifiers, stylus interaction
+├── comm.cpp/h              # Encode/decode bits, tx/rx state
+├── goertzel.cpp/h          # Frequency detection (demodulation)
+```

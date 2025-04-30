@@ -1,12 +1,16 @@
+// ==================================================================
+// goertzel.h
+// Defines Goertzel algorithm state and functions for frequency detection
+// ==================================================================
 #ifndef __GOERTZEL_H__
 #define __GOERTZEL_H__
 
 typedef struct {
-  // compute these once, upfront, in initialization
+  // Precomputed values during initialization
   float w0;
   float cos_w0;
   float sin_w0;
-  float a1; // 2*cos(w0) where w0 is normalized to 0-2*pi
+  float a1;        // 2*cos(w0), where w0 is normalized to 0–2π
 
   double s, s_z1;
   float y_re, y_im;
