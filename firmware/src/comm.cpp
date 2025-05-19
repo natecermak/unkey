@@ -137,7 +137,7 @@ void setup_transmitter() {
 
 /**
  * Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters and prints frequency domain data.
- * Analog signals (voltages) --> digital values that can be processed by da Teensy
+ * Analog signals (voltages) --> digital values that can be processed by Teensy
  */
 void adc_buffer_full_interrupt() {
   dma_ch1.clearInterrupt();
@@ -148,9 +148,7 @@ void adc_buffer_full_interrupt() {
   // Re-enables the DMA channel for next read:
   dma_ch1.enable();
 
-  /**
-   * Processes data: uses Goertzel algorithm to analyze the frequency content of a series of ADC samples
-   */
+  // Uses Goertzel algorithm to analyze the frequency content of a series of ADC samples:
   if (print_ctr++ % SCAN_CHAIN_LENGTH == 0) {
     for (size_t i = 0; i < buffer_size; i++) {
       //Serial.printf("%d\n", adc_buffer_copy[i]);
