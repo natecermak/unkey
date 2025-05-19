@@ -119,13 +119,21 @@ v1.3 pcb
 ## Firmware File Organization
 
 ```
-/firmware
-├── firmware.ino            # Entry point: setup(), loop(), high-level orchestration
-├── config.h                # Shared constants, types, UI/chat/layout settings
-├── hardware_config.h       # Pin assignments and hardware setup
-├── chat_logic.cpp/h        # Message buffer, scrolling, state management
-├── display.cpp/h           # Drawing chat, keyboard, cursor
-├── keyboard.cpp/h          # Polling, key states, modifiers, stylus interaction
-├── comm.cpp/h              # Encode/decode bits, tx/rx state
-├── goertzel.cpp/h          # Frequency detection (demodulation)
+firmware/
+├── platformio.ini
+├── src/
+│   ├── main.cpp            # Entry point: setup(), loop(), high-level orchestration
+│   ├── chat_logic.cpp      # Message buffer, scrolling, state management
+│   ├── display.cpp         # Drawing chat, keyboard, cursor
+│   ├── keyboard.cpp        # Polling, key states, modifiers, stylus interaction
+│   ├── comm.cpp            # Encode/decode bits, tx/rx state
+│   └── goertzel.cpp        # Frequency detection (demodulation)
+├── include/
+│   ├── config.h            # Shared constants, types, UI/chat/layout settings
+│   ├── hardware_config.h   # Pin assignments and hardware setup
+│   ├── chat_logic.h
+│   ├── display.h
+│   ├── keyboard.h
+│   ├── comm.h
+│   └── goertzel.h
 ```
