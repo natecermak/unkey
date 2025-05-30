@@ -192,7 +192,13 @@ void setup_receiver() {
 
   // Sets up DMA:
   // Note: The following line may raise a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but can be safely ignored
+  // dma_ch1.source((volatile uint16_t &)(ADC1_R0));
+
+  // TODO: Remove these pragmas eventually. Keeping for now because the warnings clutter the compiler output
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wstrict-aliasing"
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
+  #pragma GCC diagnostic pop
 
   // Each time you read from adc you get 2 bytes, so that's why 2x:
   dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
