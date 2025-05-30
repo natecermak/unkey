@@ -121,6 +121,8 @@ v1.3 pcb
 ```
 firmware/
 ├── platformio.ini
+├── lib/
+├── test/
 ├── src/
 │   ├── main.cpp            # Entry point: setup(), loop(), high-level orchestration
 │   ├── chat_logic.cpp      # Message buffer, scrolling, state management
@@ -128,12 +130,12 @@ firmware/
 │   ├── keyboard.cpp        # Polling, key states, modifiers, stylus interaction
 │   ├── comm.cpp            # Encode/decode bits, tx/rx state
 │   └── goertzel.cpp        # Frequency detection (demodulation)
-├── include/
-│   ├── config.h            # Shared constants, types, UI/chat/layout settings
-│   ├── hardware_config.h   # Pin assignments and hardware setup
-│   ├── chat_logic.h
-│   ├── display.h
-│   ├── keyboard.h
-│   ├── comm.h
-│   └── goertzel.h
+└── include/
+    ├── config.h            # Shared constants, types, UI/chat/layout settings
+    ├── hardware_config.h   # Pin assignments and hardware setup
+    ├── chat_logic.h
+    ├── display.h
+    ├── keyboard.h
+    ├── comm.h
+    └── goertzel.h
 ```
