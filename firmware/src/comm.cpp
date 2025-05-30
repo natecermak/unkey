@@ -137,7 +137,7 @@ void setup_transmitter() {
 
 /**
  * Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters and prints frequency domain data.
- * Analog signals (voltages) --> digital values that can be processed by da Teensy
+ * Analog signals (voltages) --> digital values that can be processed by Teensy
  */
 void adc_buffer_full_interrupt() {
   dma_ch1.clearInterrupt();
@@ -148,9 +148,7 @@ void adc_buffer_full_interrupt() {
   // Re-enables the DMA channel for next read:
   dma_ch1.enable();
 
-  /**
-   * Processes data: uses Goertzel algorithm to analyze the frequency content of a series of ADC samples
-   */
+  // Uses Goertzel algorithm to analyze the frequency content of a series of ADC samples:
   if (print_ctr++ % SCAN_CHAIN_LENGTH == 0) {
     for (size_t i = 0; i < buffer_size; i++) {
       //Serial.printf("%d\n", adc_buffer_copy[i]);
@@ -194,7 +192,13 @@ void setup_receiver() {
 
   // Sets up DMA:
   // Note: The following line may raise a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but can be safely ignored
+  // dma_ch1.source((volatile uint16_t &)(ADC1_R0));
+
+  // TODO: Remove these pragmas eventually. Keeping for now because the warnings clutter the compiler output
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wstrict-aliasing"
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
+  #pragma GCC diagnostic pop
 
   // Each time you read from adc you get 2 bytes, so that's why 2x:
   dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
