@@ -348,3 +348,25 @@ void setup_receiver() {
   // This actually determines how fast to sample the signal, and starts timer to initiate dma transfer from adc to memory once 2x buffer size bytes reached
   adc->adc0->startTimer(adc_frequency);
 }
+
+// ------------------------------------------------------------------
+// Testing Accessors
+// Note: Corresponding declarations are in comm_internal.h
+// ------------------------------------------------------------------
+
+// This wrapper ensures the code inside is only compiled when PlatformIO runs pio test:
+#ifdef TESTING
+
+uint8_t* _test_get_bitstream() {
+  return bitstream;
+}
+
+int* _test_get_bit_index() {
+  return &bit_index;
+}
+
+goertzel_state* _test_get_goertzel_state() {
+  return gs;
+}
+
+#endif

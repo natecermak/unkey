@@ -17,7 +17,4 @@ void setup_receiver();
 
 void setup_transmitter();
 
-// TODO: process_bit is not actually needed as a global func beyond visibility for testing package.
-void process_bit();
-
 #endif
