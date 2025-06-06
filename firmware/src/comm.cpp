@@ -9,7 +9,9 @@
 #include <Wire.h>
 
 #include "comm.h"
+#include "chat_logic.h"
 #include "config.h"
+#include "display.h"
 #include "hardware_config.h"
 #include "goertzel.h"
 
@@ -42,6 +44,12 @@ goertzel_state gs[gs_len];
 
 // Charge amplifier gain:
 static const int adg728_i2c_address = 76;
+
+// For process_bit
+static const int MAX_BITS = 256;
+static uint8_t bitstream[MAX_BITS];
+static int bit_index = 0;
+
 
 // ------------------------------------------------------------------
 // Functions
@@ -136,35 +144,154 @@ void setup_transmitter() {
 }
 
 /**
+ * 5. parse_message()
+ *    - Converts valid bitstream to ASCII text.
+ *    - Handles escape sequences, if needed.
+ * - Updates chat history or state with decoded message string. (?)
+ *    - May call add_message_to_chat_history(), etc. (?)
+ */
+void parse_message(const char* message) {
+
+  // Optionally handle escape sequences, validation, etc. For now we assume it's valid.
+  // TODO
+  ChatBufferState* state = get_chat_buffer_state();
+  add_message_to_chat_history(state, message, RECIPIENT_VOID, RECIPIENT_UNKEY);
+  display_chat_history(state);
+}
+
+/**
+ * 3. process_bit()
+ *    - Converts top frequency from each interval into a bit (0 or 1).
+ *    - Accumulates bits into a buffer.
+ */
+void process_bit() {
+  float mag0 = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
+  float mag1 = sqrtf(powf(gs[1].y_re, 2) + powf(gs[1].y_im, 2));
+
+  uint8_t bit = (mag1 > mag0) ? 1 : 0;
+
+  if (bit_index < MAX_BITS) {
+    bitstream[bit_index++] = bit;
+  }
+
+  // For debug:
+  Serial.printf("Bit %d: %d (mag0=%.2f, mag1=%.2f)\n", bit_index, bit, mag0, mag1);
+}
+
+/**
+ * 4. attempt_message_extract()
+ *    - Detects packet boundaries (e.g., SOH/STX and ETX/EOT).
+ *    - Validates and extracts the message portion.
+ */
+void attempt_message_extract() {
+  const uint8_t START1 = 0x01;
+  const uint8_t START2 = 0x02;
+  const uint8_t END1   = 0x03;
+  const uint8_t END2   = 0x04;
+
+  static char decoded_bytes[MAX_PACKET_SIZE];
+  int byte_count = 0;
+
+  // Convert bitstream[] into bytes
+  for (int i = 0; i + 7 < bit_index; i += 8) {
+    uint8_t byte = 0;
+    for (int b = 0; b < 8; b++) {
+      byte = (byte << 1) | bitstream[i + b];
+    }
+
+    // Store the byte
+    if (byte_count < MAX_PACKET_SIZE) {
+      decoded_bytes[byte_count++] = byte;
+    }
+  }
+
+  // Scan for packet delimiters
+  int start = -1;
+  for (int i = 0; i < byte_count - 3; i++) {
+    if ((uint8_t)decoded_bytes[i] == START1 &&
+        (uint8_t)decoded_bytes[i + 1] == START2) {
+      start = i + 2;
+      break;
+    }
+  }
+
+  if (start == -1) return;  // No valid header found
+
+  int end = -1;
+  for (int i = start; i < byte_count - 1; i++) {
+    if ((uint8_t)decoded_bytes[i] == END1 &&
+        (uint8_t)decoded_bytes[i + 1] == END2) {
+      end = i;
+      break;
+    }
+  }
+
+  if (end == -1) return;  // No valid footer found
+
+  // Copy message content into null-terminated string:
+  char message[MAX_TEXT_LENGTH];
+  int msg_len = end - start;
+  if (msg_len >= MAX_TEXT_LENGTH) msg_len = MAX_TEXT_LENGTH - 1;
+
+  strncpy(message, &decoded_bytes[start], msg_len);
+  message[msg_len] = '\0';
+
+  parse_message(message);
+
+  // Reset bit buffer
+  bit_index = 0;
+}
+
+void decode_single_bit_from_adc_window() {
+  /**
+   * 2. - Analyzes adc_buffer_copy[] using Goertzel for all 10 bins.
+   *    - Selects the most prominent frequency at each bit interval.
+   */
+
+  // "Only run the code inside this block every Nth interrupt" (where N = SCAN_CHAIN_LENGTH) i.e. looking at one bit at a time:
+  if (print_ctr++ % SCAN_CHAIN_LENGTH != 0) return;
+
+  for (size_t i = 0; i < buffer_size; i++) {
+    for (int j = 0; j < gs_len; j++) {
+      goertzel_state *g = &gs[j];
+      update_goertzel(g, adc_buffer_copy[i]);
+    }
+  }
+  for (int j = 0; j < gs_len; j++) {
+    goertzel_state *g = &gs[j];
+    finalize_goertzel(g);
+    reset_goertzel(g);
+  }
+
+  process_bit();
+
+  attempt_message_extract();
+}
+
+/**
  * Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters and prints frequency domain data.
  * Analog signals (voltages) --> digital values that can be processed by Teensy
+ *
+ * 1. - adc_buffer_full_interrupt called when DMA fills the ADC buffer.
+ *    - Copies buffer, clears DMA interrupt, re-enables DMA.
  */
 void adc_buffer_full_interrupt() {
+  // Clears the DMA interrupt flag so it's ready for the next transfer:
   dma_ch1.clearInterrupt();
+
   // mempcy copies a block of memory from one location to another:
   memcpy((void *)adc_buffer_copy, (void *)dma_adc_buff1, sizeof(dma_adc_buff1));
+
+  // ? idk really
   if ((uint32_t)dma_adc_buff1 >= 0x20200000u)
-    arm_dcache_delete((void *)dma_adc_buff1, sizeof(dma_adc_buff1));
+  arm_dcache_delete((void *)dma_adc_buff1, sizeof(dma_adc_buff1));
+
   // Re-enables the DMA channel for next read:
   dma_ch1.enable();
 
   // Uses Goertzel algorithm to analyze the frequency content of a series of ADC samples:
-  if (print_ctr++ % SCAN_CHAIN_LENGTH == 0) {
-    for (size_t i = 0; i < buffer_size; i++) {
-      //Serial.printf("%d\n", adc_buffer_copy[i]);
-      for (int j = 0; j < gs_len; j++) {
-        goertzel_state *g = &gs[j];
-        update_goertzel(g, adc_buffer_copy[i]);
-      }
-    }
-    for (int j = 0; j < gs_len; j++) {
-      goertzel_state *g = &gs[j];
-      finalize_goertzel(g);
-      // Serial.printf("GS%d (%.0f Hz): %6.1f %6.1f \t %f %d\n",
-      //   j, g->w0/6.28 * adc_frequency, g->y_re, g->y_im, sqrt(pow(g->y_re, 2) + pow(g->y_im, 2)), adc_buffer_copy[j]);
-      reset_goertzel(g);
-    }
-  }
+  // Note: This assumes that one full ADC buffer = one bit period. Not actually sure that is what is happening
+  decode_single_bit_from_adc_window();
 }
 
 /**
@@ -172,14 +299,19 @@ void adc_buffer_full_interrupt() {
  * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to a buffer super duper efficiently.
  */
 void setup_receiver() {
+  Serial.println("✨ setup_receiver called");
+
   // Sets readPin_adc_0_pin as the input pin:
   pinMode(readPin_adc_0_pin, INPUT);
 
   // Initializes Goertzel filters (TODO: Hardcoded frequencies here):
-  for (int j = 0; j < gs_len; j++) {
-    // The 2nd param sets the initial frequency for that filter: so 14000, 14200, 14400 etc
-    initialize_goertzel(&gs[j], 15000 + (j - 5) * 200, adc_frequency);
-  }
+  // for (int j = 0; j < gs_len; j++) {
+  //   // The 2nd param sets the initial frequency for that filter: so 14000, 14200, 14400 etc
+  //   initialize_goertzel(&gs[j], 15000 + (j - 5) * 200, adc_frequency);
+  // }
+
+  initialize_goertzel(&gs[0], 2000, adc_frequency);  // for binary 0
+  initialize_goertzel(&gs[1], 2200, adc_frequency);  // for binary 1
 
   // Sets gain on charge amplifier:
   set_charge_amplifier_gain(6);
@@ -204,6 +336,7 @@ void setup_receiver() {
   dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
+
   // When dma is done, calls adc_buffer_full_interrup which is a func:
   dma_ch1.attachInterrupt(&adc_buffer_full_interrupt);
   dma_ch1.triggerAtHardwareEvent(DMAMUX_SOURCE_ADC1);
