@@ -1,5 +1,5 @@
 // ==================================================================
-// firmware.ino
+// main.cpp
 // Entry point: initializes all modules and runs main event loop
 // ==================================================================
 #include <SPI.h>
