@@ -11,3 +11,6 @@ firmware/.vscode/
 
 # Personal notes
 notes/
+
+# Second gitignore
+firmware/.gitignore
