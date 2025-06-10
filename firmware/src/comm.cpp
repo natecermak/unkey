@@ -299,8 +299,6 @@ void adc_buffer_full_interrupt() {
  * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to a buffer super duper efficiently.
  */
 void setup_receiver() {
-  Serial.println("✨ setup_receiver called");
-
   // Sets readPin_adc_0_pin as the input pin:
   pinMode(readPin_adc_0_pin, INPUT);
 
@@ -355,7 +353,7 @@ void setup_receiver() {
 // ------------------------------------------------------------------
 
 // This wrapper ensures the code inside is only compiled when PlatformIO runs pio test:
-#ifdef TESTING
+#ifdef UNIT_TEST
 
 uint8_t* _test_get_bitstream() {
   return bitstream;
