@@ -14,6 +14,8 @@
 #include "hardware_config.h"
 #include "keyboard.h"
 
+#ifndef UNIT_TEST
+
 void setup() {
   // Initializes serial communication with Teensy at baud rate of 9600 bps:
   Serial.begin(9600);
@@ -46,3 +48,5 @@ void loop() {
 
   poll_battery();
 }
+
+#endif
