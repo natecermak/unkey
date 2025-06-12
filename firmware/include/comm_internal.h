@@ -15,4 +15,4 @@ int* _test_get_bit_index();
 // Declares a function that returns a pointer to the internal gs[] array, which holds the Goertzel filter states (used to determine bit values):
 goertzel_state* _test_get_goertzel_state();
 
-void process_bit();
+void get_bit_from_top_frequency();

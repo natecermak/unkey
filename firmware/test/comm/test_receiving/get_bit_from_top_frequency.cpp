@@ -1,6 +1,6 @@
 // ==================================================================
-// process_bit.cpp
-// Unit tests for process_bit() – ensures frequency magnitudes
+// get_bit_from_top_frequency.cpp
+// Unit tests for get_bit_from_top_frequency() – ensures frequency magnitudes
 // are converted to correct binary values and buffered properly
 // ==================================================================
 #include <Arduino.h>
@@ -15,7 +15,7 @@ void setUp(void) {
 void tearDown(void) {
 }
 
-void test_process_bit_appends_correct_bit_and_increments_bit_index(void) {
+void test_get_bit_from_top_frequency_appends_correct_bit_and_increments_bit_index(void) {
   // Returns a pointer to the internal array of goertzel_state structs:
   goertzel_state* gs = _test_get_goertzel_state();
 
@@ -35,12 +35,12 @@ void test_process_bit_appends_correct_bit_and_increments_bit_index(void) {
   *_test_get_bit_index() = 0;
 
   // Expect this to record a 0 since bin 0 has greater magnitude than bin 1:
-  process_bit();
+  get_bit_from_top_frequency();
 
   // Assert first bit written to bitstream is a 0 (_test_get_bitstream()[0] ~ bitstream[0]):
   TEST_ASSERT_EQUAL_UINT8(0x0, _test_get_bitstream()[0]);
 
-  // Assert that after calling process_bit(), the bit_index has been incremented from 0 to 1:
+  // Assert that after calling get_bit_from_top_frequency(), the bit_index has been incremented from 0 to 1:
   TEST_ASSERT_EQUAL_INT(1, *_test_get_bit_index());
 }
 
@@ -49,7 +49,7 @@ void setup() {
   while (!Serial && millis() < 5000);
 
   UNITY_BEGIN();
-  RUN_TEST(test_process_bit_appends_correct_bit_and_increments_bit_index);
+  RUN_TEST(test_get_bit_from_top_frequency_appends_correct_bit_and_increments_bit_index);
   UNITY_END();
 }
 

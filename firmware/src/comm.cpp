@@ -45,11 +45,17 @@ goertzel_state gs[gs_len];
 // Charge amplifier gain:
 static const int adg728_i2c_address = 76;
 
-// For process_bit
+// For get_bit_from_top_frequency:
 static const int MAX_BITS = 256;
 static uint8_t bitstream[MAX_BITS];
 static int bit_index = 0;
 
+// Packet framing bytes:
+// Note: Using two-byte delimiters is more reliable than using one
+static const uint8_t PACKET_START1 = 0x01;
+static const uint8_t PACKET_START2 = 0x02;
+static const uint8_t PACKET_END1   = 0x03;
+static const uint8_t PACKET_END2   = 0x04;
 
 // ------------------------------------------------------------------
 // Functions
@@ -144,27 +150,21 @@ void setup_transmitter() {
 }
 
 /**
- * 5. parse_message()
- *    - Converts valid bitstream to ASCII text.
- *    - Handles escape sequences, if needed.
- * - Updates chat history or state with decoded message string. (?)
- *    - May call add_message_to_chat_history(), etc. (?)
+ * 5. deliver_message()
  */
-void parse_message(const char* message) {
+void deliver_message(const char* message) {
 
-  // Optionally handle escape sequences, validation, etc. For now we assume it's valid.
-  // TODO
+  // TODO: Optionally handle escape sequences, validation, etc. For now we assume it's valid.
+
   ChatBufferState* state = get_chat_buffer_state();
   add_message_to_chat_history(state, message, RECIPIENT_VOID, RECIPIENT_UNKEY);
   display_chat_history(state);
 }
 
 /**
- * 3. process_bit()
- *    - Converts top frequency from each interval into a bit (0 or 1).
- *    - Accumulates bits into a buffer.
+ * 3. get_bit_from_top_frequency()
  */
-void process_bit() {
+void get_bit_from_top_frequency() {
   float mag0 = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
   float mag1 = sqrtf(powf(gs[1].y_re, 2) + powf(gs[1].y_im, 2));
 
@@ -173,79 +173,71 @@ void process_bit() {
   if (bit_index < MAX_BITS) {
     bitstream[bit_index++] = bit;
   }
-
-  // For debug:
-  Serial.printf("Bit %d: %d (mag0=%.2f, mag1=%.2f)\n", bit_index, bit, mag0, mag1);
 }
 
 /**
- * 4. attempt_message_extract()
- *    - Detects packet boundaries (e.g., SOH/STX and ETX/EOT).
- *    - Validates and extracts the message portion.
+ * 4. parse_message()
  */
-void attempt_message_extract() {
-  const uint8_t START1 = 0x01;
-  const uint8_t START2 = 0x02;
-  const uint8_t END1   = 0x03;
-  const uint8_t END2   = 0x04;
-
+void parse_message() {
+  // Buffer to hold reconstructed bytes from the bitstream:
   static char decoded_bytes[MAX_PACKET_SIZE];
+
+  // Tracks how many full bytes have been reconstructed from the incoming bitstream[]:
   int byte_count = 0;
 
-  // Convert bitstream[] into bytes
+  // Converts bitstream[] into bytes and stores in decoded_bytes:
   for (int i = 0; i + 7 < bit_index; i += 8) {
     uint8_t byte = 0;
     for (int b = 0; b < 8; b++) {
       byte = (byte << 1) | bitstream[i + b];
     }
-
-    // Store the byte
+    // Stores the byte if there's space:
     if (byte_count < MAX_PACKET_SIZE) {
       decoded_bytes[byte_count++] = byte;
     }
   }
 
-  // Scan for packet delimiters
+  // Scans for packet start (header):
   int start = -1;
   for (int i = 0; i < byte_count - 3; i++) {
-    if ((uint8_t)decoded_bytes[i] == START1 &&
-        (uint8_t)decoded_bytes[i + 1] == START2) {
+    if ((uint8_t)decoded_bytes[i] == PACKET_START1 &&
+        (uint8_t)decoded_bytes[i + 1] == PACKET_START2) {
       start = i + 2;
       break;
     }
   }
+  // No valid header found, so return early:
+  if (start == -1) return;
 
-  if (start == -1) return;  // No valid header found
-
+  // Scans for packet end (footer):
   int end = -1;
   for (int i = start; i < byte_count - 1; i++) {
-    if ((uint8_t)decoded_bytes[i] == END1 &&
-        (uint8_t)decoded_bytes[i + 1] == END2) {
+    if ((uint8_t)decoded_bytes[i] == PACKET_END1 &&
+        (uint8_t)decoded_bytes[i + 1] == PACKET_END2) {
       end = i;
       break;
     }
   }
+  // No valid footer found, so return early:
+  if (end == -1) return;
 
-  if (end == -1) return;  // No valid footer found
-
-  // Copy message content into null-terminated string:
+  // Copies message content into null-terminated string:
   char message[MAX_TEXT_LENGTH];
   int msg_len = end - start;
   if (msg_len >= MAX_TEXT_LENGTH) msg_len = MAX_TEXT_LENGTH - 1;
-
   strncpy(message, &decoded_bytes[start], msg_len);
   message[msg_len] = '\0';
 
-  parse_message(message);
+  // Adds message to chat history and displays it:
+  deliver_message(message);
 
-  // Reset bit buffer
+  // Resets bit buffer:
   bit_index = 0;
 }
 
 void decode_single_bit_from_adc_window() {
   /**
-   * 2. - Analyzes adc_buffer_copy[] using Goertzel for all 10 bins.
-   *    - Selects the most prominent frequency at each bit interval.
+   * 2. decode_single_bit_from_adc_window
    */
 
   // "Only run the code inside this block every Nth interrupt" (where N = SCAN_CHAIN_LENGTH) i.e. looking at one bit at a time:
@@ -263,17 +255,16 @@ void decode_single_bit_from_adc_window() {
     reset_goertzel(g);
   }
 
-  process_bit();
+  get_bit_from_top_frequency();
 
-  attempt_message_extract();
+  parse_message();
 }
 
 /**
  * Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters and prints frequency domain data.
  * Analog signals (voltages) --> digital values that can be processed by Teensy
  *
- * 1. - adc_buffer_full_interrupt called when DMA fills the ADC buffer.
- *    - Copies buffer, clears DMA interrupt, re-enables DMA.
+ * 1. adc_buffer_full_interrupt
  */
 void adc_buffer_full_interrupt() {
   // Clears the DMA interrupt flag so it's ready for the next transfer:
