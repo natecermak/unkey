@@ -9,7 +9,9 @@
 #include <Wire.h>
 
 #include "comm.h"
+#include "chat_logic.h"
 #include "config.h"
+#include "display.h"
 #include "hardware_config.h"
 #include "goertzel.h"
 
@@ -42,6 +44,18 @@ goertzel_state gs[gs_len];
 
 // Charge amplifier gain:
 static const int adg728_i2c_address = 76;
+
+// For get_bit_from_top_frequency:
+static const int MAX_BITS = 256;
+static uint8_t bitstream[MAX_BITS];
+static int bit_index = 0;
+
+// Packet framing bytes:
+// Note: Using two-byte delimiters is more reliable than using one
+static const uint8_t PACKET_START1 = 0x01;
+static const uint8_t PACKET_START2 = 0x02;
+static const uint8_t PACKET_END1   = 0x03;
+static const uint8_t PACKET_END2   = 0x04;
 
 // ------------------------------------------------------------------
 // Functions
@@ -136,37 +150,139 @@ void setup_transmitter() {
 }
 
 /**
+ * 5. deliver_message()
+ */
+void deliver_message(const char* message) {
+
+  // TODO: Optionally handle escape sequences, validation, etc. For now we assume it's valid.
+
+  ChatBufferState* state = get_chat_buffer_state();
+  add_message_to_chat_history(state, message, RECIPIENT_VOID, RECIPIENT_UNKEY);
+  display_chat_history(state);
+}
+
+/**
+ * 3. get_bit_from_top_frequency()
+ */
+void get_bit_from_top_frequency() {
+  float mag0 = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
+  float mag1 = sqrtf(powf(gs[1].y_re, 2) + powf(gs[1].y_im, 2));
+
+  uint8_t bit = (mag1 > mag0) ? 1 : 0;
+
+  if (bit_index < MAX_BITS) {
+    bitstream[bit_index++] = bit;
+  }
+}
+
+/**
+ * 4. parse_message()
+ */
+void parse_message() {
+  // Buffer to hold reconstructed bytes from the bitstream:
+  static char decoded_bytes[MAX_PACKET_SIZE];
+
+  // Tracks how many full bytes have been reconstructed from the incoming bitstream[]:
+  int byte_count = 0;
+
+  // Converts bitstream[] into bytes and stores in decoded_bytes:
+  for (int i = 0; i + 7 < bit_index; i += 8) {
+    uint8_t byte = 0;
+    for (int b = 0; b < 8; b++) {
+      byte = (byte << 1) | bitstream[i + b];
+    }
+    // Stores the byte if there's space:
+    if (byte_count < MAX_PACKET_SIZE) {
+      decoded_bytes[byte_count++] = byte;
+    }
+  }
+
+  // Scans for packet start (header):
+  int start = -1;
+  for (int i = 0; i < byte_count - 3; i++) {
+    if ((uint8_t)decoded_bytes[i] == PACKET_START1 &&
+        (uint8_t)decoded_bytes[i + 1] == PACKET_START2) {
+      start = i + 2;
+      break;
+    }
+  }
+  // No valid header found, so return early:
+  if (start == -1) return;
+
+  // Scans for packet end (footer):
+  int end = -1;
+  for (int i = start; i < byte_count - 1; i++) {
+    if ((uint8_t)decoded_bytes[i] == PACKET_END1 &&
+        (uint8_t)decoded_bytes[i + 1] == PACKET_END2) {
+      end = i;
+      break;
+    }
+  }
+  // No valid footer found, so return early:
+  if (end == -1) return;
+
+  // Copies message content into null-terminated string:
+  char message[MAX_TEXT_LENGTH];
+  int msg_len = end - start;
+  if (msg_len >= MAX_TEXT_LENGTH) msg_len = MAX_TEXT_LENGTH - 1;
+  strncpy(message, &decoded_bytes[start], msg_len);
+  message[msg_len] = '\0';
+
+  // Adds message to chat history and displays it:
+  deliver_message(message);
+
+  // Resets bit buffer:
+  bit_index = 0;
+}
+
+void decode_single_bit_from_adc_window() {
+  /**
+   * 2. decode_single_bit_from_adc_window
+   */
+
+  // "Only run the code inside this block every Nth interrupt" (where N = SCAN_CHAIN_LENGTH) i.e. looking at one bit at a time:
+  if (print_ctr++ % SCAN_CHAIN_LENGTH != 0) return;
+
+  for (size_t i = 0; i < buffer_size; i++) {
+    for (int j = 0; j < gs_len; j++) {
+      goertzel_state *g = &gs[j];
+      update_goertzel(g, adc_buffer_copy[i]);
+    }
+  }
+  for (int j = 0; j < gs_len; j++) {
+    goertzel_state *g = &gs[j];
+    finalize_goertzel(g);
+    reset_goertzel(g);
+  }
+
+  get_bit_from_top_frequency();
+
+  parse_message();
+}
+
+/**
  * Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters and prints frequency domain data.
- * Analog signals (voltages) --> digital values that can be processed by da Teensy
+ * Analog signals (voltages) --> digital values that can be processed by Teensy
+ *
+ * 1. adc_buffer_full_interrupt
  */
 void adc_buffer_full_interrupt() {
+  // Clears the DMA interrupt flag so it's ready for the next transfer:
   dma_ch1.clearInterrupt();
+
   // mempcy copies a block of memory from one location to another:
   memcpy((void *)adc_buffer_copy, (void *)dma_adc_buff1, sizeof(dma_adc_buff1));
+
+  // ? idk really
   if ((uint32_t)dma_adc_buff1 >= 0x20200000u)
-    arm_dcache_delete((void *)dma_adc_buff1, sizeof(dma_adc_buff1));
+  arm_dcache_delete((void *)dma_adc_buff1, sizeof(dma_adc_buff1));
+
   // Re-enables the DMA channel for next read:
   dma_ch1.enable();
 
-  /**
-   * Processes data: uses Goertzel algorithm to analyze the frequency content of a series of ADC samples
-   */
-  if (print_ctr++ % SCAN_CHAIN_LENGTH == 0) {
-    for (size_t i = 0; i < buffer_size; i++) {
-      //Serial.printf("%d\n", adc_buffer_copy[i]);
-      for (int j = 0; j < gs_len; j++) {
-        goertzel_state *g = &gs[j];
-        update_goertzel(g, adc_buffer_copy[i]);
-      }
-    }
-    for (int j = 0; j < gs_len; j++) {
-      goertzel_state *g = &gs[j];
-      finalize_goertzel(g);
-      // Serial.printf("GS%d (%.0f Hz): %6.1f %6.1f \t %f %d\n",
-      //   j, g->w0/6.28 * adc_frequency, g->y_re, g->y_im, sqrt(pow(g->y_re, 2) + pow(g->y_im, 2)), adc_buffer_copy[j]);
-      reset_goertzel(g);
-    }
-  }
+  // Uses Goertzel algorithm to analyze the frequency content of a series of ADC samples:
+  // Note: This assumes that one full ADC buffer = one bit period. Not actually sure that is what is happening
+  decode_single_bit_from_adc_window();
 }
 
 /**
@@ -178,10 +294,13 @@ void setup_receiver() {
   pinMode(readPin_adc_0_pin, INPUT);
 
   // Initializes Goertzel filters (TODO: Hardcoded frequencies here):
-  for (int j = 0; j < gs_len; j++) {
-    // The 2nd param sets the initial frequency for that filter: so 14000, 14200, 14400 etc
-    initialize_goertzel(&gs[j], 15000 + (j - 5) * 200, adc_frequency);
-  }
+  // for (int j = 0; j < gs_len; j++) {
+  //   // The 2nd param sets the initial frequency for that filter: so 14000, 14200, 14400 etc
+  //   initialize_goertzel(&gs[j], 15000 + (j - 5) * 200, adc_frequency);
+  // }
+
+  initialize_goertzel(&gs[0], 2000, adc_frequency);  // for binary 0
+  initialize_goertzel(&gs[1], 2200, adc_frequency);  // for binary 1
 
   // Sets gain on charge amplifier:
   set_charge_amplifier_gain(6);
@@ -194,12 +313,19 @@ void setup_receiver() {
 
   // Sets up DMA:
   // Note: The following line may raise a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but can be safely ignored
+  // dma_ch1.source((volatile uint16_t &)(ADC1_R0));
+
+  // TODO: Remove these pragmas eventually. Keeping for now because the warnings clutter the compiler output
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wstrict-aliasing"
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
+  #pragma GCC diagnostic pop
 
   // Each time you read from adc you get 2 bytes, so that's why 2x:
   dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
+
   // When dma is done, calls adc_buffer_full_interrup which is a func:
   dma_ch1.attachInterrupt(&adc_buffer_full_interrupt);
   dma_ch1.triggerAtHardwareEvent(DMAMUX_SOURCE_ADC1);
@@ -211,3 +337,25 @@ void setup_receiver() {
   // This actually determines how fast to sample the signal, and starts timer to initiate dma transfer from adc to memory once 2x buffer size bytes reached
   adc->adc0->startTimer(adc_frequency);
 }
+
+// ------------------------------------------------------------------
+// Testing Accessors
+// Note: Corresponding declarations are in comm_internal.h
+// ------------------------------------------------------------------
+
+// This wrapper ensures the code inside is only compiled when PlatformIO runs pio test:
+#ifdef UNIT_TEST
+
+uint8_t* _test_get_bitstream() {
+  return bitstream;
+}
+
+int* _test_get_bit_index() {
+  return &bit_index;
+}
+
+goertzel_state* _test_get_goertzel_state() {
+  return gs;
+}
+
+#endif
