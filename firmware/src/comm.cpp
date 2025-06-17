@@ -248,20 +248,22 @@ void parse_message() {
   bit_index = 0;
 }
 
+/**
+ * 2. decode_single_bit_from_adc_window
+ */
 void decode_single_bit_from_adc_window() {
-  /**
-   * 2. decode_single_bit_from_adc_window
-   */
-
-  // "Only run the code inside this block every Nth interrupt" (where N = SCAN_CHAIN_LENGTH) i.e. looking at one bit at a time:
+  // Skips processing unless a full bit period's worth of data is ready:
   if (print_ctr++ % SCAN_CHAIN_LENGTH != 0) return;
 
+  // For each ADC sample in the buffer, update each Goertzel filter state with this sample:
   for (size_t i = 0; i < buffer_size; i++) {
     for (int j = 0; j < gs_len; j++) {
       goertzel_state *g = &gs[j];
       update_goertzel(g, adc_buffer_copy[i]);
     }
   }
+
+  // After processing all samples, get final magnitude, etc and reset each Goertzel filter:
   for (int j = 0; j < gs_len; j++) {
     goertzel_state *g = &gs[j];
     finalize_goertzel(g);
@@ -269,7 +271,6 @@ void decode_single_bit_from_adc_window() {
   }
 
   get_bit_from_top_frequency();
-
   parse_message();
 }
 
