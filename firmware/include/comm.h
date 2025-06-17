@@ -31,8 +31,6 @@ uint8_t* _test_get_bitstream();
 // Declares a function that returns a pointer to the internal bit_index variable
 int* _test_get_bit_index();
 
-void parse_message();
-
 char* _test_get_delivered_message();
 
 // Used by tests to verify what message was "delivered" without calling any hardware-dependent code:
@@ -40,6 +38,11 @@ void _test_set_deliver_fn(void (*fn)(const char*));
 
 // Declares a function that returns a pointer to the internal gs[] array, which holds the Goertzel filter states (used to determine bit values):
 goertzel_state* _test_get_goertzel_state();
+
+// Otherwise local functions that only need to be exposed globally for testing:
+void parse_message();
+
+void deliver_message(const char* message);
 
 void get_bit_from_top_frequency();
 
