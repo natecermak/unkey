@@ -8,8 +8,12 @@
 #include <unity.h>
 
 #include "comm.h"
+#include "mock_display.h"
 
-void setUp(void) {}
+void setUp(void) {
+  // Resets counter before each test:
+  display_called = 0;
+}
 
 void tearDown(void) {}
 
@@ -28,7 +32,7 @@ void test_parse_message(void) {
     0,0,0,0,0,1,0,0
   };
 
-  // Loads bit sequence into the internal bitstream buffer for parse_message to process:
+  // Loads bit sequence into the internal bitstream buffer ⏳for parse_message to process:
   for (size_t i = 0; i < sizeof(sample_bit_sequence); i++) {
     _test_get_bitstream()[i] = sample_bit_sequence[i];
   }

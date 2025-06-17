@@ -2,6 +2,7 @@
 // display.cpp
 // Handles screen setup and message rendering
 // ==================================================================
+#ifndef UNIT_TEST
 #include "battery.h"
 #include "comm.h"
 #include "config.h"
@@ -194,3 +195,4 @@ void setup_screen() {
 
   reset_tx_display_buffer();
 }
+#endif
