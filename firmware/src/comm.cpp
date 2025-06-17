@@ -15,6 +15,11 @@
 #include "hardware_config.h"
 #include "goertzel.h"
 
+// Holds a test-provided function pointer that overrides normal deliver_message behavior in tests:
+#ifdef UNIT_TEST
+static void (*deliver_fn_override)(const char*) = nullptr;
+#endif
+
 // ------------------------------------------------------------------
 // State
 // ------------------------------------------------------------------
@@ -153,6 +158,14 @@ void setup_transmitter() {
  * 5. deliver_message()
  */
 void deliver_message(const char* message) {
+  // If a test override is set, this will call it instead of performing normal delivery logic.
+  // Allows unit tests to capture or mock delivery without triggering hardware-dependent code:
+#ifdef UNIT_TEST
+  if (deliver_fn_override) {
+    deliver_fn_override(message);
+    return;
+  }
+#endif
 
   // TODO: Optionally handle escape sequences, validation, etc. For now we assume it's valid.
 
@@ -340,10 +353,7 @@ void setup_receiver() {
 
 // ------------------------------------------------------------------
 // Testing Accessors
-// Note: Corresponding declarations are in comm_internal.h
 // ------------------------------------------------------------------
-
-// This wrapper ensures the code inside is only compiled when PlatformIO runs pio test:
 #ifdef UNIT_TEST
 
 uint8_t* _test_get_bitstream() {
@@ -356,6 +366,19 @@ int* _test_get_bit_index() {
 
 goertzel_state* _test_get_goertzel_state() {
   return gs;
+}
+
+// Buffer that stores the last delivered message during a test:
+char delivered[MAX_TEXT_LENGTH] = {0};
+
+// Allows tests to inspect what message was captured:
+char* _test_get_delivered_message() {
+  return delivered;
+}
+
+// When called, allows unit tests to capture or mock delivery without triggering hardware-dependent code:
+void _test_set_deliver_fn(void (*fn)(const char*)) {
+  deliver_fn_override = fn;
 }
 
 #endif

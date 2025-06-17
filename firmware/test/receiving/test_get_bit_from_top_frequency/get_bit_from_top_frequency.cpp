@@ -7,7 +7,6 @@
 #include <unity.h>
 
 #include "comm.h"
-#include "comm_internal.h"
 
 void setUp(void) {
 }

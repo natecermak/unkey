@@ -19,10 +19,10 @@ void tearDown(void) {
 }
 
 void test_packetize_message(void) {
-  // 1. Call packetize_message() with MESSAGE_TO_TEST and TRANSMIT_BUFFER_TO_TEST
+  // Calls packetize_message() with MESSAGE_TO_TEST and TRANSMIT_BUFFER_TO_TEST:
   packetize_message(MESSAGE_TO_TEST, TRANSMIT_BUFFER_TO_TEST);
 
-  // 2. Assert that the contents of TRANSMIT_BUFFER_TO_TEST match expected output
+  // Asserts that the contents of TRANSMIT_BUFFER_TO_TEST match expected output:
   uint8_t expected[] = {
     0x01, 0x02, 'b', 'a', 'b', 'k', 'a', 0x03, 0x04, '\0'
   };
