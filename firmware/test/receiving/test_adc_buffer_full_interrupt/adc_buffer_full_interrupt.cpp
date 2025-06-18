@@ -1,7 +1,7 @@
 // ==================================================================
 // adc_buffer_full_interrupt.cpp
-// Input:
-// Output:
+// Input: Filled ADC DMA buffer with sampled data
+// Output: Copies data for processing, triggers frequency analysis and bit extraction
 // Run just this test with $ pio test -e teensy40_test -f "receiving/test_adc_buffer_full_interrupt"
 // ==================================================================
 #include <Arduino.h>
@@ -31,10 +31,9 @@ void test_adc_buffer_full_interrupt(void) {
 
   // Checks that adc_buffer_copy now contains the copied data:
   uint16_t* copy = _test_get_adc_buffer_copy();
-  // Checks first value:
-  TEST_ASSERT_EQUAL(1234, copy[0]);
-  // Checks last value:
-  TEST_ASSERT_EQUAL(1234, copy[buffer_size - 1]);
+  for (size_t i = 0; i < buffer_size; i++) {
+    TEST_ASSERT_EQUAL(1234, copy[i]);
+  }
 
   // Checks that 1 bit was appended:
   TEST_ASSERT_EQUAL(1, *_test_get_bit_index());
