@@ -39,12 +39,14 @@ void _test_set_deliver_fn(void (*fn)(const char*));
 // Declares a function that returns a pointer to the internal gs[] array, which holds the Goertzel filter states (used to determine bit values):
 goertzel_state* _test_get_goertzel_state();
 
+// Exposes a pointer to print_ctr so tests can modify/reset it:
+uint8_t* _test_get_print_ctr();
+
 // Otherwise local functions that only need to be exposed globally for testing:
-void parse_message();
-
+void decode_single_bit_from_adc_window();
 void deliver_message(const char* message);
-
 void get_bit_from_top_frequency();
+void parse_message();
 
 #endif // UNIT_TEST
 

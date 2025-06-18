@@ -15,6 +15,10 @@
 #include "hardware_config.h"
 #include "goertzel.h"
 
+// ------------------------------------------------------------------
+// Testing Accessors
+// ------------------------------------------------------------------
+
 // Holds a test-provided function pointer that overrides normal deliver_message behavior in tests:
 #ifdef UNIT_TEST
 static void (*deliver_fn_override)(const char*) = nullptr;
@@ -353,7 +357,7 @@ void setup_receiver() {
 }
 
 // ------------------------------------------------------------------
-// Testing Accessors
+// More Testing Accessors
 // ------------------------------------------------------------------
 #ifdef UNIT_TEST
 
@@ -380,6 +384,10 @@ char* _test_get_delivered_message() {
 // When called, allows unit tests to capture or mock delivery without triggering hardware-dependent code:
 void _test_set_deliver_fn(void (*fn)(const char*)) {
   deliver_fn_override = fn;
+}
+
+uint8_t* _test_get_print_ctr() {
+  return &print_ctr;
 }
 
 #endif

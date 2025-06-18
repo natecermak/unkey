@@ -2,6 +2,7 @@
 // goertzel.cpp
 // Implements the Goertzel algorithm for detecting specific frequencies
 // ==================================================================
+#ifndef UNIT_TEST
 #include <math.h>  // for PI
 
 #include "goertzel.h"
@@ -34,3 +35,4 @@ void reset_goertzel(goertzel_state *g) {
   g->s_z1 = 0;
   g->n = 0;
 }
+#endif
