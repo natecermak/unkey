@@ -24,15 +24,19 @@
 static void (*deliver_fn_override)(const char*) = nullptr;
 #endif
 
+// Size of buffer where ADC data will be stored:
+#ifdef UNIT_TEST
+const uint32_t buffer_size = 16;
+#else
+static const uint32_t buffer_size = 10240;
+#endif
+
 // ------------------------------------------------------------------
 // State
 // ------------------------------------------------------------------
 
 // ADC will sample at freq of 81.92 kHz:
 static const uint32_t adc_frequency = 81920;
-
-// Size of buffer where ADC data will be stored:
-static const uint32_t buffer_size = 10240;
 
 char tx_display_buffer[MAX_TEXT_LENGTH];
 uint16_t tx_display_buffer_length = 0;
@@ -386,8 +390,19 @@ void _test_set_deliver_fn(void (*fn)(const char*)) {
   deliver_fn_override = fn;
 }
 
+// Returns a pointer to print_ctr so tests can modify or check its value:
 uint8_t* _test_get_print_ctr() {
   return &print_ctr;
+}
+
+// Returns a pointer to dma_adc_buff1 so tests can fill it with mock ADC data:
+volatile uint16_t* _test_get_dma_adc_buff1() {
+  return dma_adc_buff1;
+}
+
+// Returns a pointer to adc_buffer_copy so tests can inspect or clear copied ADC data:
+uint16_t* _test_get_adc_buffer_copy() {
+  return adc_buffer_copy;
 }
 
 #endif

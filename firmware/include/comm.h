@@ -42,7 +42,14 @@ goertzel_state* _test_get_goertzel_state();
 // Exposes a pointer to print_ctr so tests can modify/reset it:
 uint8_t* _test_get_print_ctr();
 
+extern const uint32_t buffer_size;
+
+volatile uint16_t* _test_get_dma_adc_buff1();
+
+uint16_t* _test_get_adc_buffer_copy();
+
 // Otherwise local functions that only need to be exposed globally for testing:
+void adc_buffer_full_interrupt();
 void decode_single_bit_from_adc_window();
 void deliver_message(const char* message);
 void get_bit_from_top_frequency();
