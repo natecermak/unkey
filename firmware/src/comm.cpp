@@ -283,19 +283,18 @@ void decode_single_bit_from_adc_window() {
 }
 
 /**
- * Deals with ADC data when DMA buffer is full, and processes the data with Goertzel filters and prints frequency domain data.
+ * Called when DMA fills the ADC buffer. It clears the DMA interrupt, copies the buffer, re-enables DMA, and
+ * triggers bit extraction from the data.
  * Analog signals (voltages) --> digital values that can be processed by Teensy
- *
- * 1. adc_buffer_full_interrupt
  */
 void adc_buffer_full_interrupt() {
   // Clears the DMA interrupt flag so it's ready for the next transfer:
   dma_ch1.clearInterrupt();
 
-  // mempcy copies a block of memory from one location to another:
+  // Copies ADC data from the DMA buffer into the processing buffer:
   memcpy((void *)adc_buffer_copy, (void *)dma_adc_buff1, sizeof(dma_adc_buff1));
 
-  // ? idk really
+  // Clears data cache for the DMA buffer to ensure CPU sees the latest data written by DMA:
   if ((uint32_t)dma_adc_buff1 >= 0x20200000u)
   arm_dcache_delete((void *)dma_adc_buff1, sizeof(dma_adc_buff1));
 
@@ -303,7 +302,7 @@ void adc_buffer_full_interrupt() {
   dma_ch1.enable();
 
   // Uses Goertzel algorithm to analyze the frequency content of a series of ADC samples:
-  // Note: This assumes that one full ADC buffer = one bit period. Not actually sure that is what is happening
+  // TODO: This assumes that one full ADC buffer = one bit period. Not actually sure that is what is happening
   decode_single_bit_from_adc_window();
 }
 
