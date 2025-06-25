@@ -11,7 +11,7 @@
 
 void setUp(void) {
   // Ensures decode_single_bit_from_adc_window processes data on first call:
-  *_test_get_print_ctr() = 0;
+  *_test_get_adc_window_counter() = 0;
 
   // Resets bitstream index:
   *_test_get_bit_index() = 0;

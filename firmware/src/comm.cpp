@@ -48,11 +48,13 @@ DMAChannel dma_ch1;
 DMAMEM static volatile uint16_t __attribute__((aligned(32))) dma_adc_buff1[buffer_size];
 uint16_t adc_buffer_copy[buffer_size];
 
-static uint8_t print_ctr = 0;
-static const uint8_t gs_len = 10;
+// Gets incremented every time decode_single_bit_from_adc_window() runs, and decoding
+// only happens when adc_window_counter % SCAN_CHAIN_LENGTH == 0:
+static uint8_t adc_window_counter = 0;
 
 // An array that will store state for the Goertzel algo - each goertzel_state obj
 // holds data to compute G algo for that frequency:
+static const uint8_t gs_len = 10;
 goertzel_state gs[gs_len];
 
 // Charge amplifier gain:
@@ -75,7 +77,8 @@ static const uint8_t PACKET_END2   = 0x04;
 // ------------------------------------------------------------------
 
 /**
- * Sends data to a DAC via SPI: prepares a 3-byte buffer with an address and a 12-bit value, then sends the data using SPI communication.
+ * Sends data to a DAC via SPI: prepares a 3-byte buffer with an address and a 12-bit value, then
+ * sends the data using SPI communication.
  * MCP48CXDX1 -- 24-bit messages.
  * top byte: 5-bit address, 2 "command bits", 1 dont-care
  * bottom 2 bytes: 4 dont-care, 12 data bits
@@ -261,7 +264,7 @@ void parse_message() {
  */
 void decode_single_bit_from_adc_window() {
   // Skips processing unless a full bit period's worth of data is ready:
-  if (print_ctr++ % SCAN_CHAIN_LENGTH != 0) return;
+  if (adc_window_counter++ % SCAN_CHAIN_LENGTH != 0) return;
 
   // For each ADC sample in the buffer, update each Goertzel filter state with this sample:
   for (size_t i = 0; i < buffer_size; i++) {
@@ -389,9 +392,9 @@ void _test_set_deliver_fn(void (*fn)(const char*)) {
   deliver_fn_override = fn;
 }
 
-// Returns a pointer to print_ctr so tests can modify or check its value:
-uint8_t* _test_get_print_ctr() {
-  return &print_ctr;
+// Returns a pointer to adc_window_counter so tests can modify or check its value:
+uint8_t* _test_get_adc_window_counter() {
+  return &adc_window_counter;
 }
 
 // Returns a pointer to dma_adc_buff1 so tests can fill it with mock ADC data:

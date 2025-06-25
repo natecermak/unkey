@@ -35,8 +35,8 @@ void setUp(void) {
   // Reset bit index
   *_test_get_bit_index() = 0;
 
-  // Reset print_ctr so decode will actually run
-  *_test_get_print_ctr() = 0;
+  // Reset adc_window_counter so decode will actually run
+  *_test_get_adc_window_counter() = 0;
 
   // Provide expected Goertzel outputs for bit extraction
   goertzel_state* gs = _test_get_goertzel_state();
@@ -111,16 +111,16 @@ void test_buffer_copy_alternating(void) {
   TEST_ASSERT_EQUAL(1, *_test_get_bit_index());
 }
 
-void test_print_ctr_gating(void) {
-  // Set print_ctr so that % SCAN_CHAIN_LENGTH != 0
-  *_test_get_print_ctr() = 1;  // Any nonzero value that fails the mod check
+void test_adc_window_counter_gating(void) {
+  // Set adc_window_counter so that % SCAN_CHAIN_LENGTH != 0
+  *_test_get_adc_window_counter() = 1;  // Any nonzero value that fails the mod check
 
   // Reset bit index
   *_test_get_bit_index() = 0;
 
   adc_buffer_full_interrupt();
 
-  // Since print_ctr gating skipped processing, bit_index should stay 0
+  // Since adc_window_counter gating skipped processing, bit_index should stay 0
   TEST_ASSERT_EQUAL(0, *_test_get_bit_index());
 }
 
@@ -134,7 +134,7 @@ void setup() {
   RUN_TEST(test_buffer_copy_zeros);
   RUN_TEST(test_buffer_copy_max_values);
   RUN_TEST(test_buffer_copy_alternating);
-  RUN_TEST(test_print_ctr_gating);
+  RUN_TEST(test_adc_window_counter_gating);
   UNITY_END();
 }
 
