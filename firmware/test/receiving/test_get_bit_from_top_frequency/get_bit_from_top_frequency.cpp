@@ -10,9 +10,31 @@
 #include "comm.h"
 
 void setUp(void) {
+  *_test_get_bit_index() = 0;
 }
 
 void tearDown(void) {
+}
+
+void test_get_bit_from_top_frequency_sets_bit_to_0_when_mag0_is_stronger(void) {
+  goertzel_state* gs = _test_get_goertzel_state();
+
+  gs[0].y_re = 5.0f; gs[0].y_im = 0.0f;
+  gs[1].y_re = 2.0f; gs[1].y_im = 0.0f;
+
+  get_bit_from_top_frequency();
+
+  TEST_ASSERT_EQUAL_UINT8(0, _test_get_bitstream()[0]);
+}
+
+void test_get_bit_from_top_frequency_does_not_overflow_buffer(void) {
+  static const int MAX_BITS = 256;
+  *_test_get_bit_index() = MAX_BITS; // pretend buffer is full
+
+  get_bit_from_top_frequency(); // shouldn't append anything
+
+  // Check that index didn't change
+  TEST_ASSERT_EQUAL(MAX_BITS, *_test_get_bit_index());
 }
 
 void test_get_bit_from_top_frequency_appends_correct_bit(void) {
@@ -29,8 +51,6 @@ void test_get_bit_from_top_frequency_appends_correct_bit(void) {
   gs[1].y_re = 10.0f;
   gs[1].y_im = 0.0f;
 
-  *_test_get_bit_index() = 0;
-
   get_bit_from_top_frequency();
 
   TEST_ASSERT_EQUAL_UINT8(0x1, _test_get_bitstream()[0]);
@@ -42,6 +62,8 @@ void setup() {
   while (!Serial && millis() < 5000);
 
   UNITY_BEGIN();
+  RUN_TEST(test_get_bit_from_top_frequency_sets_bit_to_0_when_mag0_is_stronger);
+  RUN_TEST(test_get_bit_from_top_frequency_does_not_overflow_buffer);
   RUN_TEST(test_get_bit_from_top_frequency_appends_correct_bit);
   UNITY_END();
 }

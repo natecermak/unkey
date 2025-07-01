@@ -186,10 +186,8 @@ void deliver_message(const char* message) {
   display_chat_history(state);
 }
 
-/**
- * 3. get_bit_from_top_frequency()
- */
 void get_bit_from_top_frequency() {
+  // Calculates the magnitude of the complex output for each frequency bin:
   float mag0 = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
   float mag1 = sqrtf(powf(gs[1].y_re, 2) + powf(gs[1].y_im, 2));
 
