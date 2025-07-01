@@ -2,10 +2,19 @@
 // goertzel.cpp
 // Implements the Goertzel algorithm for detecting specific frequencies
 // ==================================================================
-#ifndef UNIT_TEST
 #include <math.h>  // for PI
 
 #include "goertzel.h"
+
+/*
+
+w0   ~ angular frequency (radians per sample)
+f0   ~ frequency to detetct
+fs   ~ sampling rate
+s    ~ internal state of filter - current value
+s_z1 ~ internal state of filter - previous value
+
+*/
 
 void initialize_goertzel(goertzel_state *g, float f0, float fs) {
   g->w0 = 2 * M_PI * f0 / fs; // radians per sample
@@ -35,4 +44,3 @@ void reset_goertzel(goertzel_state *g) {
   g->s_z1 = 0;
   g->n = 0;
 }
-#endif

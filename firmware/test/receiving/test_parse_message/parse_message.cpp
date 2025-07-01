@@ -51,6 +51,62 @@ void test_parse_message(void) {
   TEST_ASSERT_EQUAL_STRING("A", _test_get_delivered_message());
 }
 
+void test_skips_parsing_when_packet_invalid() {
+  // Construct bitstream that lacks proper framing bytes
+  // Just random data: not a valid message
+  uint8_t bits[] = {
+    0,1,1,0,1,0,1,0,  // 0x6A
+    0,1,1,1,1,0,0,0,  // 0x78
+    0,1,0,0,1,0,1,0   // 0x4A
+  };
+
+  int* bit_index = _test_get_bit_index();
+  uint8_t* bitstream = _test_get_bitstream();
+
+  for (size_t i = 0; i < sizeof(bits); i++) {
+    bitstream[i] = bits[i];
+  }
+  *bit_index = sizeof(bits);
+
+  // Clear any previous message
+  strcpy(_test_get_delivered_message(), "");
+
+  decode_single_bit_from_adc_window();  // triggers parse_message()
+
+  // Confirm no message was delivered
+  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
+}
+
+void test_parses_message_when_valid_packet_present() {
+  // Set up valid packet: [START][H][i][END]
+  uint8_t test_bits[] = {
+    0,0,0,0,0,0,0,1,  // 0x01
+    0,0,0,0,0,0,1,0,  // 0x02
+    0,1,0,0,1,0,0,0,  // 'H'
+    0,1,1,0,1,0,0,1,  // 'i'
+    0,0,0,0,0,0,1,1,  // 0x03
+    0,0,0,0,0,1,0,0   // 0x04
+  };
+
+  int* bit_index = _test_get_bit_index();
+  uint8_t* bitstream = _test_get_bitstream();
+
+  // Copy bits into test bitstream
+  for (size_t i = 0; i < sizeof(test_bits); i++) {
+    bitstream[i] = test_bits[i];
+  }
+  *bit_index = sizeof(test_bits);
+
+  // Reset captured message
+  strcpy(_test_get_delivered_message(), "");
+
+  decode_single_bit_from_adc_window();
+
+  // Confirm that the message "Hi" was parsed and delivered
+  TEST_ASSERT_EQUAL_STRING("Hi", _test_get_delivered_message());
+}
+
+
 void setup() {
   Serial.begin(9600);
   while (!Serial && millis() < 5000);

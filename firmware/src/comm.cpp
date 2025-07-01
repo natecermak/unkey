@@ -24,9 +24,10 @@
 static void (*deliver_fn_override)(const char*) = nullptr;
 #endif
 
-// Size of buffer where ADC data will be stored:
+// Defines the number of ADC samples collected into a buffer (dma_adc_buff1) every time the DMA completes a
+// transfer i.e. the size of one ADC window:
 #ifdef UNIT_TEST
-const uint32_t buffer_size = 16;
+const uint32_t buffer_size = 10240;
 #else
 static const uint32_t buffer_size = 10240;
 #endif
@@ -260,29 +261,39 @@ void parse_message() {
 }
 
 /**
- * 2. decode_single_bit_from_adc_window
- */
+ * Applies a function to each goertzel_state in gs[].
+ * Pass either one_param_fn (if sample == -1) or two_param_fn with a sample.
+ * Only one function pointer should be non-NULL.
+*/
+void for_each_goertzel_state(void (*one_param_fn)(goertzel_state*), void (*two_param_fn)(goertzel_state*, int), int sample) {
+  for (int i = 0; i < gs_len; i++) {
+    // Gets a pointer to the j-th element of the gs array, which holds Goertzel filter state:
+    goertzel_state* g = &gs[i];
+    // Passes that pointer into whatever function so it can update the Goertzel state in-place:
+    if (sample == -1 && one_param_fn != NULL) {
+      one_param_fn(g);
+    } else if (two_param_fn != NULL) {
+      two_param_fn(g, sample);
+    }
+  }
+}
+
 void decode_single_bit_from_adc_window() {
   // Skips processing unless a full bit period's worth of data is ready:
   if (adc_window_counter++ % SCAN_CHAIN_LENGTH != 0) return;
 
   // For each ADC sample in the buffer, update each Goertzel filter state with this sample:
   for (size_t i = 0; i < buffer_size; i++) {
-    for (int j = 0; j < gs_len; j++) {
-      goertzel_state *g = &gs[j];
-      update_goertzel(g, adc_buffer_copy[i]);
-    }
+    for_each_goertzel_state(NULL, update_goertzel, adc_buffer_copy[i]);
   }
 
-  // After processing all samples, get final magnitude, etc and reset each Goertzel filter:
-  for (int j = 0; j < gs_len; j++) {
-    goertzel_state *g = &gs[j];
-    finalize_goertzel(g);
-    reset_goertzel(g);
-  }
+  for_each_goertzel_state(finalize_goertzel, NULL, -1);
 
   get_bit_from_top_frequency();
   parse_message();
+
+  // Resets internal Goertzel state (not y_re/y_im):
+  for_each_goertzel_state(reset_goertzel, NULL, -1);
 }
 
 /**
