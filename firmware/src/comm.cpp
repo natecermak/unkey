@@ -166,6 +166,10 @@ void setup_transmitter() {
   write_to_dac(8, 1);          // 8 is address for VREF, 1 means use internal ref
 }
 
+/**
+ * Adds message to chat history and refreshes display,
+ * or uses test override if in UNIT_TEST mode.
+ */
 void deliver_message(const char* message) {
   // If a test override is set, this will call it instead of performing normal delivery logic.
   // Allows unit tests to capture or mock delivery without triggering hardware-dependent code:
@@ -183,6 +187,9 @@ void deliver_message(const char* message) {
   display_chat_history(state);
 }
 
+/**
+ * Appends 0 or 1 to bitstream based on which frequency has higher magnitude.
+ */
 void get_bit_from_top_frequency() {
   // Calculates the magnitude of the complex output for each frequency bin:
   float mag0 = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
@@ -195,6 +202,10 @@ void get_bit_from_top_frequency() {
   }
 }
 
+/**
+ * Reconstructs bytes from bitstream, extracts a valid message
+ * between header/footer, and delivers it to chat history.
+ */
 void parse_message() {
   // Buffer to hold reconstructed bytes from the bitstream:
   static char decoded_bytes[MAX_PACKET_SIZE];
@@ -270,6 +281,10 @@ void for_each_goertzel_state(void (*one_param_fn)(goertzel_state*), void (*two_p
   }
 }
 
+/**
+ * Processes one full ADC window to decode a bit,
+ * update the bitstream, and attempt message parsing.
+ */
 void decode_single_bit_from_adc_window() {
   // Skips processing unless a full bit period's worth of data is ready:
   if (adc_window_counter++ % SCAN_CHAIN_LENGTH != 0) return;
