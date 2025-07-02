@@ -166,9 +166,6 @@ void setup_transmitter() {
   write_to_dac(8, 1);          // 8 is address for VREF, 1 means use internal ref
 }
 
-/**
- * 5. deliver_message()
- */
 void deliver_message(const char* message) {
   // If a test override is set, this will call it instead of performing normal delivery logic.
   // Allows unit tests to capture or mock delivery without triggering hardware-dependent code:
@@ -198,9 +195,6 @@ void get_bit_from_top_frequency() {
   }
 }
 
-/**
- * 4. parse_message()
- */
 void parse_message() {
   // Buffer to hold reconstructed bytes from the bitstream:
   static char decoded_bytes[MAX_PACKET_SIZE];

@@ -13,69 +13,14 @@
 void setUp(void) {
   // Resets counter before each test:
   display_called = 0;
+
+  // Redirects delivered messages to test buffer for verification during unit tests:
+  _test_set_deliver_fn([](const char* msg) {
+    strncpy(_test_get_delivered_message(), msg, MAX_TEXT_LENGTH);
+  });
 }
 
 void tearDown(void) {}
-
-void test_parse_message(void) {
-  // Bit pattern representing: packet start (0x01 0x02), 'A' (0x41), packet end (0x03 0x04):
-  uint8_t sample_bit_sequence[] = {
-    // 0x01 = 00000001
-    0,0,0,0,0,0,0,1,
-    // 0x02 = 00000010
-    0,0,0,0,0,0,1,0,
-    // 'A'  = 01000001
-    0,1,0,0,0,0,0,1,
-    // 0x03 = 00000011
-    0,0,0,0,0,0,1,1,
-    // 0x04 = 00000100
-    0,0,0,0,0,1,0,0
-  };
-
-  // Loads bit sequence into the internal bitstream buffer ⏳for parse_message to process:
-  for (size_t i = 0; i < sizeof(sample_bit_sequence); i++) {
-    _test_get_bitstream()[i] = sample_bit_sequence[i];
-  }
-
-  // Sets bit_index to indicate how many bits are in the bitstream:
-  *_test_get_bit_index() = sizeof(sample_bit_sequence);
-
-  // Provides a test override for deliver_message that copies the delivered message into the test-accessible buffer:
-  _test_set_deliver_fn([](const char* msg) {
-    strncpy(_test_get_delivered_message(), msg, MAX_TEXT_LENGTH - 1);
-    _test_get_delivered_message()[MAX_TEXT_LENGTH - 1] = '\0';
-  });
-
-  parse_message();
-
-  TEST_ASSERT_EQUAL_STRING("A", _test_get_delivered_message());
-}
-
-void test_skips_parsing_when_packet_invalid() {
-  // Construct bitstream that lacks proper framing bytes
-  // Just random data: not a valid message
-  uint8_t bits[] = {
-    0,1,1,0,1,0,1,0,  // 0x6A
-    0,1,1,1,1,0,0,0,  // 0x78
-    0,1,0,0,1,0,1,0   // 0x4A
-  };
-
-  int* bit_index = _test_get_bit_index();
-  uint8_t* bitstream = _test_get_bitstream();
-
-  for (size_t i = 0; i < sizeof(bits); i++) {
-    bitstream[i] = bits[i];
-  }
-  *bit_index = sizeof(bits);
-
-  // Clear any previous message
-  strcpy(_test_get_delivered_message(), "");
-
-  decode_single_bit_from_adc_window();  // triggers parse_message()
-
-  // Confirm no message was delivered
-  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
-}
 
 void test_parses_message_when_valid_packet_present() {
   // Set up valid packet: [START][H][i][END]
@@ -100,10 +45,100 @@ void test_parses_message_when_valid_packet_present() {
   // Reset captured message
   strcpy(_test_get_delivered_message(), "");
 
-  decode_single_bit_from_adc_window();
+  parse_message();
 
   // Confirm that the message "Hi" was parsed and delivered
   TEST_ASSERT_EQUAL_STRING("Hi", _test_get_delivered_message());
+}
+
+void test_ignores_packet_with_no_framing() {
+  // Construct bitstream that lacks proper framing bytes
+  uint8_t bits[] = {
+    0,1,1,0,1,0,1,0,  // 0x6A
+    0,1,1,1,1,0,0,0,  // 0x78
+    0,1,0,0,1,0,1,0   // 0x4A
+  };
+
+  int* bit_index = _test_get_bit_index();
+  uint8_t* bitstream = _test_get_bitstream();
+
+  for (size_t i = 0; i < sizeof(bits); i++) {
+    bitstream[i] = bits[i];
+  }
+  *bit_index = sizeof(bits);
+
+  // Clear any previous message
+  strcpy(_test_get_delivered_message(), "");
+
+  parse_message();
+
+  // Confirm no message was parsed/delivered:
+  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
+}
+
+void test_truncates_message_that_exceeds_max_length() {
+  // Construct message: [START][A x 410][END]
+  const int A_COUNT = MAX_PACKET_SIZE - 4;
+
+  static uint8_t test_bits[8 * (2 + A_COUNT + 2)];
+  size_t i = 0;
+
+  // Header bytes:
+  uint8_t start[] = {0x01, 0x02};
+  for (uint8_t b : start)
+    for (int j = 7; j >= 0; j--) test_bits[i++] = (b >> j) & 1;
+
+  // Message bytes:
+  for (int k = 0; k < A_COUNT; k++) {
+    uint8_t a = 'A';
+    for (int j = 7; j >= 0; j--) test_bits[i++] = (a >> j) & 1;
+  }
+
+  // Footer bytes:
+  uint8_t end[] = {0x03, 0x04};
+  for (uint8_t b : end)
+    for (int j = 7; j >= 0; j--) test_bits[i++] = (b >> j) & 1;
+
+  memcpy(_test_get_bitstream(), test_bits, i);
+  *_test_get_bit_index() = i;
+
+  parse_message();
+
+  const char* delivered = _test_get_delivered_message();
+  TEST_ASSERT_EQUAL_INT(MAX_TEXT_LENGTH - 1, strlen(delivered));
+  TEST_ASSERT_EQUAL_CHAR('A', delivered[0]);
+}
+
+void test_does_not_parse_message_with_only_start_header() {
+  uint8_t test_bits[] = {
+    0,0,0,0,0,0,0,1,
+    0,0,0,0,0,0,1,0
+  };
+
+  memcpy(_test_get_bitstream(), test_bits, sizeof(test_bits));
+  *_test_get_bit_index() = sizeof(test_bits);
+
+  strcpy(_test_get_delivered_message(), "");
+
+  parse_message();
+
+  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
+}
+
+void test_does_not_parse_message_with_only_stop_footer() {
+  uint8_t test_bits[] = {
+    0,0,0,0,0,0,1,1,
+    0,0,0,0,0,1,0,0
+  };
+
+  memcpy(_test_get_bitstream(), test_bits, sizeof(test_bits));
+  *_test_get_bit_index() = sizeof(test_bits);
+
+  strcpy(_test_get_delivered_message(), "");
+
+  parse_message();
+
+  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
 }
 
 
@@ -112,7 +147,13 @@ void setup() {
   while (!Serial && millis() < 5000);
 
   UNITY_BEGIN();
-  RUN_TEST(test_parse_message);
+  RUN_TEST(test_parses_message_when_valid_packet_present);
+  RUN_TEST(test_ignores_packet_with_no_framing);
+  RUN_TEST(test_truncates_message_that_exceeds_max_length);
+  RUN_TEST(test_does_not_parse_message_with_only_start_header);
+  RUN_TEST(test_does_not_parse_message_with_only_stop_footer);
+  // TODO: test_ignores_noise_before_header
+  // TODO: test_ignores_noise_after_footer
   UNITY_END();
 }
 
