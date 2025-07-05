@@ -24,12 +24,12 @@
 static void (*deliver_fn_override)(const char*) = nullptr;
 #endif
 
-// Defines the number of ADC samples collected into a buffer (dma_adc_buff1) every time the DMA completes a
-// transfer i.e. the size of one ADC window:
+// Defines the number of ADC samples collected into a buffer (dma_adc_buff1) every time the DMA completes a transfer:
+// Number samples collected per ADC window (buffer_size) = adc_sampling_rate * bit period = 81920 * 5 ms = 410 samples
 #ifdef UNIT_TEST
-const uint32_t buffer_size = 10240;
+const uint32_t buffer_size = 410;
 #else
-static const uint32_t buffer_size = 10240;
+static const uint32_t buffer_size = 410;
 #endif
 
 // ------------------------------------------------------------------
@@ -37,7 +37,7 @@ static const uint32_t buffer_size = 10240;
 // ------------------------------------------------------------------
 
 // ADC will sample at freq of 81.92 kHz:
-static const uint32_t adc_frequency = 81920;
+static const uint32_t adc_sampling_rate = 81920;
 
 char tx_display_buffer[MAX_TEXT_LENGTH];
 uint16_t tx_display_buffer_length = 0;
@@ -332,17 +332,12 @@ void adc_buffer_full_interrupt() {
  * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to a buffer super duper efficiently.
  */
 void setup_receiver() {
-  // Sets readPin_adc_0_pin as the input pin:
+  // Sets readPin_adc_0_pin as the input pin for ADC sampling:
   pinMode(readPin_adc_0_pin, INPUT);
 
-  // Initializes Goertzel filters (TODO: Hardcoded frequencies here):
-  // for (int j = 0; j < gs_len; j++) {
-  //   // The 2nd param sets the initial frequency for that filter: so 14000, 14200, 14400 etc
-  //   initialize_goertzel(&gs[j], 15000 + (j - 5) * 200, adc_frequency);
-  // }
-
-  initialize_goertzel(&gs[0], 2000, adc_frequency);  // for binary 0
-  initialize_goertzel(&gs[1], 2200, adc_frequency);  // for binary 1
+  // Initializes Goertzel filters for binary 0 and 1 detection at 2.0 kHz and 2.2 kHz:
+  initialize_goertzel(&gs[0], 2000, adc_sampling_rate);  // for binary 0
+  initialize_goertzel(&gs[1], 2200, adc_sampling_rate);  // for binary 1
 
   // Sets gain on charge amplifier:
   set_charge_amplifier_gain(6);
@@ -353,31 +348,35 @@ void setup_receiver() {
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
   //adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
 
-  // Sets up DMA:
+  // Configures DMA to transfer ADC samples into dma_adc_buff1:
   // Note: The following line may raise a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but can be safely ignored
-  // dma_ch1.source((volatile uint16_t &)(ADC1_R0));
-
-  // TODO: Remove these pragmas eventually. Keeping for now because the warnings clutter the compiler output
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wstrict-aliasing"
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
   #pragma GCC diagnostic pop
 
-  // Each time you read from adc you get 2 bytes, so that's why 2x:
+  // Each time you sample from ADC you get 2 bytes, so that's why we're using buffer_size * 2:
   dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
 
-  // When dma is done, calls adc_buffer_full_interrup which is a func:
+  /*
+  Note that given adc_sampling_rate = 81.92 kHz and that a full buffer contains 410 samples:
+
+  Time per buffer = buffer_size / sampling_rate = 410 / 81920 = 5 ms
+
+  -> The DMA transfer completes every (buffer_size X samples) i.e. 5 ms, triggering adc_buffer_full_interrupt().
+
+  */
+  // Triggers adc_buffer_full_interrupt every time DMA transfer completes:
   dma_ch1.attachInterrupt(&adc_buffer_full_interrupt);
   dma_ch1.triggerAtHardwareEvent(DMAMUX_SOURCE_ADC1);
 
-  // Enables the DMA channel:
+  // Enables DMA and start ADC with timer-based sampling at 81.92 kHz:
   dma_ch1.enable();
   adc->adc0->enableDMA();
   adc->adc0->startSingleRead(readPin_adc_0_pin);
-  // This actually determines how fast to sample the signal, and starts timer to initiate dma transfer from adc to memory once 2x buffer size bytes reached
-  adc->adc0->startTimer(adc_frequency);
+  adc->adc0->startTimer(adc_sampling_rate);
 }
 
 // ------------------------------------------------------------------
