@@ -44,9 +44,11 @@ uint8_t* _test_get_adc_window_counter();
 
 extern const uint32_t buffer_size;
 
-volatile uint16_t* _test_get_dma_adc_buff1();
+uint16_t* _test_get_adc_buffer_half_1();
 
-uint16_t* _test_get_adc_buffer_copy();
+volatile uint16_t* _test_get_adc_buffer_half_2();
+
+uint16_t* _test_get_adc_buffer_full_bit();
 
 // Otherwise local functions that only need to be exposed globally for testing:
 void adc_buffer_full_interrupt();

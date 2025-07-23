@@ -24,7 +24,26 @@
 static void (*deliver_fn_override)(const char*) = nullptr;
 #endif
 
-// Defines the number of ADC samples collected into a buffer (dma_adc_buff1) every time the DMA completes a transfer:
+// ------------------------------------------------------------------
+// State
+// ------------------------------------------------------------------
+
+/*
+  adc_buffer_half_2 is filled by the DMA and declared with DMAMEM and __attribute__((aligned(32)))
+  to place it in RAM2 (OCRAM), which is cacheable and requires manual cache management.
+
+  RAM1 = DTCM (Tightly Coupled Memory) --> Not cacheable. Always in sync.
+
+  RAM2 = OCRAM (what DMAMEM uses) --> Cacheable. Can get out of sync with the Teensy CPU’s data cache,
+  which requires manual cache management: arm_dcache_flush() pushes CPU cache changes to RAM2;
+  arm_dcache_delete() discards cache so the CPU reads fresh data from RAM2.
+
+  adc_buffer_half_1 is filled by the CPU using memcpy() and lives in regular (uncached) RAM1.
+
+  adc_buffer_full_bit is the concatenated buffer (half_1 + half_2) that gets analyzed.
+*/
+
+// Defines the number of ADC samples collected into a buffer (adc_buffer_half_2) every time the DMA completes a transfer
 // Number samples collected per ADC window (buffer_size) = adc_sampling_rate * bit period = 81920 * 5 ms = 410 samples
 #ifdef UNIT_TEST
 const uint32_t buffer_size = 410;
@@ -32,9 +51,12 @@ const uint32_t buffer_size = 410;
 static const uint32_t buffer_size = 410;
 #endif
 
-// ------------------------------------------------------------------
-// State
-// ------------------------------------------------------------------
+// Holds 5 ms ADC window chunk that was filled before the currrent (adc_buffer_half_2):
+uint16_t adc_buffer_half_1[buffer_size];
+
+// adc_buffer_half_1 is considered valid when it holds a full previous DMA buffer,
+// and therefore ready to pair with the current buffer (adc_buffer_half_2) for decoding:
+bool buffer_half_1_is_valid = false;
 
 // ADC will sample at freq of 81.92 kHz:
 static const uint32_t adc_sampling_rate = 81920;
@@ -45,9 +67,10 @@ uint16_t tx_display_buffer_length = 0;
 ADC *adc = new ADC();
 DMAChannel dma_ch1;
 
-// Creates dma_adc_buff1 buffer:
-DMAMEM static volatile uint16_t __attribute__((aligned(32))) dma_adc_buff1[buffer_size];
-uint16_t adc_buffer_copy[buffer_size];
+// Creates second half of buffer that comprises one bit period when combined with adc_buffer_half_1, and
+// DMAMEM places adc_buffer_half_2 in RAM2 (OCRAM):
+DMAMEM static volatile uint16_t __attribute__((aligned(32))) adc_buffer_half_2[buffer_size];
+uint16_t adc_buffer_full_bit[buffer_size * 2];
 
 // Gets incremented every time decode_single_bit_from_adc_window() runs, and decoding
 // only happens when adc_window_counter % SCAN_CHAIN_LENGTH == 0:
@@ -65,6 +88,7 @@ static const int adg728_i2c_address = 76;
 static const int MAX_BITS = 256;
 static uint8_t bitstream[MAX_BITS];
 static int bit_index = 0;
+static const float MAGNITUDE_THRESHOLD = 5.0f; // TODO: adjust as needed based on testing
 
 // Packet framing bytes:
 // Note: Using two-byte delimiters is more reliable than using one
@@ -194,12 +218,19 @@ void get_bit_from_top_frequency() {
   // Calculates the magnitude of the complex output for each frequency bin:
   float mag0 = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
   float mag1 = sqrtf(powf(gs[1].y_re, 2) + powf(gs[1].y_im, 2));
+  float total_mag = mag0 + mag1;
+
+  // Ignores noisy or weak signals:
+  if (total_mag < MAGNITUDE_THRESHOLD) {
+    return;
+  }
 
   uint8_t bit = (mag1 > mag0) ? 1 : 0;
 
   if (bit_index < MAX_BITS) {
     bitstream[bit_index++] = bit;
   }
+
 }
 
 /**
@@ -282,8 +313,7 @@ void for_each_goertzel_state(void (*one_param_fn)(goertzel_state*), void (*two_p
 }
 
 /**
- * Processes one full ADC window to decode a bit,
- * update the bitstream, and attempt message parsing.
+ * Processes one full ADC window to decode a bit, updates the bitstream, and attempts message parsing.
  */
 void decode_single_bit_from_adc_window() {
   // Skips processing unless a full bit period's worth of data is ready:
@@ -291,7 +321,7 @@ void decode_single_bit_from_adc_window() {
 
   // For each ADC sample in the buffer, update each Goertzel filter state with this sample:
   for (size_t i = 0; i < buffer_size; i++) {
-    for_each_goertzel_state(NULL, update_goertzel, adc_buffer_copy[i]);
+    for_each_goertzel_state(NULL, update_goertzel, adc_buffer_full_bit[i]);
   }
 
   for_each_goertzel_state(finalize_goertzel, NULL, -1);
@@ -306,30 +336,42 @@ void decode_single_bit_from_adc_window() {
 /**
  * Called when DMA fills the ADC buffer. It clears the DMA interrupt, copies the buffer, re-enables DMA, and
  * triggers bit extraction from the data.
- * Analog signals (voltages) --> digital values that can be processed by Teensy
+ - A bit is encoded over 10 ms of audio.
+ - Each ADC buffer = 5 ms of samples (410 samples at 81.92 kHz).
+ - Therefore, two buffers = 1 bit period.
  */
 void adc_buffer_full_interrupt() {
   // Clears the DMA interrupt flag so it's ready for the next transfer:
   dma_ch1.clearInterrupt();
 
-  // Copies ADC data from the DMA buffer into the processing buffer:
-  memcpy((void *)adc_buffer_copy, (void *)dma_adc_buff1, sizeof(dma_adc_buff1));
+  if (buffer_half_1_is_valid) {
+    // Combines prev + current into adc_buffer_full_bit:
+    memcpy(adc_buffer_full_bit, adc_buffer_half_1, sizeof(adc_buffer_half_1));
+    memcpy(adc_buffer_full_bit + buffer_size, (const void*)adc_buffer_half_2, sizeof(adc_buffer_half_2));
+  } else {
+    // Not ready to decode yet, just store current into prev and return:
+    memcpy(adc_buffer_half_1, (const void*)adc_buffer_half_2, sizeof(adc_buffer_half_2));
+    buffer_half_1_is_valid = true;
+    dma_ch1.enable();
+    return;
+  }
 
-  // Clears data cache for the DMA buffer to ensure CPU sees the latest data written by DMA:
-  if ((uint32_t)dma_adc_buff1 >= 0x20200000u)
-  arm_dcache_delete((void *)dma_adc_buff1, sizeof(dma_adc_buff1));
+  // Invalidates CPU cache for adc_buffer_half_2 to ensure CPU sees the latest data written by DMA (RAM2 is cacheable):
+  if ((uint32_t)adc_buffer_half_2 >= 0x20200000u) {
+    arm_dcache_delete((void *)adc_buffer_half_2, sizeof(adc_buffer_half_2));
+  }
 
   // Re-enables the DMA channel for next read:
   dma_ch1.enable();
 
   // Uses Goertzel algorithm to analyze the frequency content of a series of ADC samples:
-  // TODO: This assumes that one full ADC buffer = one bit period. Not actually sure that is what is happening
   decode_single_bit_from_adc_window();
+  buffer_half_1_is_valid = false;
 }
 
 /**
  * Configures the system to receive data: initializes the ADC, configures Goertzel filters for frequency analysis,
- * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to a buffer super duper efficiently.
+ * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to buffer.
  */
 void setup_receiver() {
   // Sets readPin_adc_0_pin as the input pin for ADC sampling:
@@ -348,7 +390,7 @@ void setup_receiver() {
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
   //adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::HIGH_SPEED);
 
-  // Configures DMA to transfer ADC samples into dma_adc_buff1:
+  // Configures DMA to transfer ADC samples into adc_buffer_half_2:
   // Note: The following line may raise a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but can be safely ignored
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wstrict-aliasing"
@@ -356,17 +398,14 @@ void setup_receiver() {
   #pragma GCC diagnostic pop
 
   // Each time you sample from ADC you get 2 bytes, so that's why we're using buffer_size * 2:
-  dma_ch1.destinationBuffer((uint16_t *)dma_adc_buff1, buffer_size * 2);
+  dma_ch1.destinationBuffer((uint16_t *)adc_buffer_half_2, buffer_size);
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
 
   /*
-  Note that given adc_sampling_rate = 81.92 kHz and that a full buffer contains 410 samples:
-
-  Time per buffer = buffer_size / sampling_rate = 410 / 81920 = 5 ms
-
-  -> The DMA transfer completes every (buffer_size X samples) i.e. 5 ms, triggering adc_buffer_full_interrupt().
-
+    Note that given adc_sampling_rate = 81.92 kHz and that a full buffer contains 410 samples:
+    Time per buffer = buffer_size / sampling_rate = 410 / 81920 = 5 ms
+    -> The DMA transfer completes every (buffer_size X samples) i.e. 5 ms, triggering adc_buffer_full_interrupt().
   */
   // Triggers adc_buffer_full_interrupt every time DMA transfer completes:
   dma_ch1.attachInterrupt(&adc_buffer_full_interrupt);
@@ -414,14 +453,18 @@ uint8_t* _test_get_adc_window_counter() {
   return &adc_window_counter;
 }
 
-// Returns a pointer to dma_adc_buff1 so tests can fill it with mock ADC data:
-volatile uint16_t* _test_get_dma_adc_buff1() {
-  return dma_adc_buff1;
+uint16_t* _test_get_adc_buffer_half_1() {
+  return adc_buffer_half_1;
 }
 
-// Returns a pointer to adc_buffer_copy so tests can inspect or clear copied ADC data:
-uint16_t* _test_get_adc_buffer_copy() {
-  return adc_buffer_copy;
+// Returns a pointer to adc_buffer_half_2 so tests can fill it with mock ADC data - volatile because it's the DMA destination:
+volatile uint16_t* _test_get_adc_buffer_half_2() {
+  return adc_buffer_half_2;
+}
+
+// Returns a pointer to adc_buffer_full_bit	so tests can inspect or clear copied ADC data:
+uint16_t* _test_get_adc_buffer_full_bit() {
+  return adc_buffer_full_bit;
 }
 
 #endif
