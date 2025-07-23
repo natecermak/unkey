@@ -26,10 +26,26 @@ void setUp(void) {
 void tearDown(void) {}
 
 void test_decoding_single_bit_increments_bitstream_index(void) {
+  *_test_get_adc_window_counter() = 0;
+
+  // Fills ADC buffer with a strong 2200 Hz sine wave:
+  float frequency = 2200.0f;
+  float sampling_rate = 81920.0f;
+  float amplitude = 1500.0f;
+  float offset = 2048.0f;
+
+  uint16_t* adc_buffer = _test_get_adc_buffer_full_bit();
+  for (uint32_t i = 0; i < buffer_size * 2; i++) {
+    float t = (float)i / sampling_rate;
+    float sine = sinf(2.0f * PI * frequency * t);
+    adc_buffer[i] = (uint16_t)(offset + amplitude * sine);
+  }
+
   decode_single_bit_from_adc_window();
 
   TEST_ASSERT_EQUAL(1, *_test_get_bit_index());
 }
+
 
 void test_skips_decoding_when_gating_fails(void) {
   // Sets adc_window_counter to 1, which is not a multiple of SCAN_CHAIN_LENGTH and therefore the decoding logic shouldn't run:
@@ -42,20 +58,20 @@ void test_skips_decoding_when_gating_fails(void) {
 }
 
 void test_correct_bit_extracted_from_strongest_freq(void) {
-  // Simulate Goertzel output: stronger signal at index 1 (freq 1)
+  // Simulates Goertzel output: stronger signal at index 1 (freq 1)
   // freq 0 → magnitude = 3; freq 1 → magnitude = 10
   goertzel_state* gs = _test_get_goertzel_state();
-  gs[0].y_re = 3; gs[0].y_im = 0;
-  gs[1].y_re = 10; gs[1].y_im = 0;
+  gs[0].y_re =   3; gs[0].y_im = 0;
+  gs[1].y_re = 100; gs[1].y_im = 0;
 
-  uint16_t* adc_buffer = _test_get_adc_buffer_copy();
+  uint16_t* adc_buffer = _test_get_adc_buffer_full_bit	();
 
   float frequency = 2200.0f;
   float sampling_rate = 81920.0f;
-  float amplitude = 1000.0f;
+  float amplitude = 1500.0f;
   float offset = 2048.0f;
 
-  for (uint32_t i = 0; i < buffer_size; i++) {
+  for (uint32_t i = 0; i < buffer_size * 2; i++) {
     float t = (float)i / sampling_rate;
     float sine = sinf(2.0f * PI * frequency * t);
     adc_buffer[i] = (uint16_t)(offset + amplitude * sine);
@@ -71,7 +87,7 @@ void test_correct_bit_extracted_from_strongest_freq(void) {
 void test_goertzel_states_reset_after_decode() {
   goertzel_state* gs = _test_get_goertzel_state();
 
-  // Give the filters some non-zero internal state
+  // Gives the filters some non-zero internal state:
   for (int i = 0; i < 10; i++) {
     gs[i].s = 1.0f;
     gs[i].s_z1 = 1.0f;

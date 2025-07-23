@@ -19,8 +19,8 @@ void tearDown(void) {
 void test_get_bit_from_top_frequency_sets_bit_to_0_when_mag0_is_stronger(void) {
   goertzel_state* gs = _test_get_goertzel_state();
 
-  gs[0].y_re = 5.0f; gs[0].y_im = 0.0f;
-  gs[1].y_re = 2.0f; gs[1].y_im = 0.0f;
+  gs[0].y_re = 100.0f; gs[0].y_im = 0.0f;
+  gs[1].y_re =   2.0f; gs[1].y_im = 0.0f;
 
   get_bit_from_top_frequency();
 
@@ -28,12 +28,14 @@ void test_get_bit_from_top_frequency_sets_bit_to_0_when_mag0_is_stronger(void) {
 }
 
 void test_get_bit_from_top_frequency_does_not_overflow_buffer(void) {
+  // Pretends buffer is full:
   static const int MAX_BITS = 256;
-  *_test_get_bit_index() = MAX_BITS; // pretend buffer is full
+  *_test_get_bit_index() = MAX_BITS;
 
-  get_bit_from_top_frequency(); // shouldn't append anything
+  // This shouldn't append anything:
+  get_bit_from_top_frequency();
 
-  // Check that index didn't change
+  // Checks that index didn't change:
   TEST_ASSERT_EQUAL(MAX_BITS, *_test_get_bit_index());
 }
 
@@ -41,15 +43,11 @@ void test_get_bit_from_top_frequency_appends_correct_bit(void) {
   // Returns a pointer to the internal array of goertzel_state structs:
   goertzel_state* gs = _test_get_goertzel_state();
 
-  gs[0].y_re = 0.0f;
-  gs[0].y_im = 0.0f;
-  gs[1].y_re = 0.0f;
-  gs[1].y_im = 0.0f;
+  gs[0].y_re = 0.0f; gs[0].y_im = 0.0f;
+  gs[1].y_re = 0.0f; gs[1].y_im = 0.0f;
 
-  gs[0].y_re = 3.0f;
-  gs[0].y_im = 0.0f;
-  gs[1].y_re = 10.0f;
-  gs[1].y_im = 0.0f;
+  gs[0].y_re =   3.0f; gs[0].y_im = 0.0f;
+  gs[1].y_re = 100.0f; gs[1].y_im = 0.0f;
 
   get_bit_from_top_frequency();
 
