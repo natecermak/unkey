@@ -1,6 +1,10 @@
 // ==================================================================
 // packetize_message.cpp
+// Input: A const char* message and an output transmit buffer
+// Output: Fills transmit buffer with framed message using packet delimiters (0x01 0x02 ... 0x03 0x04)
+// Run just this test with $ pio test -e teensy40_test -f "transmitting/test_packetize_message"
 // ==================================================================
+
 #include <Arduino.h>
 #include <unity.h>
 

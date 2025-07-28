@@ -1,7 +1,7 @@
 // ==================================================================
 // get_bit_from_top_frequency.cpp
-// Unit tests for get_bit_from_top_frequency() – ensures frequency magnitudes
-// are converted to correct binary values and buffered properly
+// Input: Goertzel frequency magnitudes in gs[]
+// Output: Appends a 0 or 1 to bitstream[] based on dominant frequency
 // Run just this test with $ pio test -e teensy40_test -f "receiving/test_get_bit_from_top_frequency"
 // ==================================================================
 #include <Arduino.h>
