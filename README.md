@@ -119,13 +119,40 @@ v1.3 pcb
 ## Firmware File Organization
 
 ```
-/firmware
-├── firmware.ino            # Entry point: setup(), loop(), high-level orchestration
-├── config.h                # Shared constants, types, UI/chat/layout settings
-├── hardware_config.h       # Pin assignments and hardware setup
-├── chat_logic.cpp/h        # Message buffer, scrolling, state management
-├── display.cpp/h           # Drawing chat, keyboard, cursor
-├── keyboard.cpp/h          # Polling, key states, modifiers, stylus interaction
-├── comm.cpp/h              # Encode/decode bits, tx/rx state
-├── goertzel.cpp/h          # Frequency detection (demodulation)
+firmware/
+├── platformio.ini
+├── include/                  # All header files
+│   ├── battery.h
+│   ├── chat_logic.h
+│   ├── comm.h
+│   ├── config.h              # Shared constants, types, UI/chat/layout settings
+│   ├── display.h
+│   ├── goertzel.h
+│   ├── hardware_config.h     # Pin assignments and hardware setup
+│   └── keyboard.h
+├── src/                      # Main firmware source code
+│   ├── battery.cpp
+│   ├── chat_logic.cpp        # Message buffer, scrolling, state management
+│   ├── comm.cpp              # Encode/decode bits, tx/rx state
+│   ├── display.cpp           # Drawing chat, keyboard, cursor
+│   ├── goertzel.cpp          # Frequency detection (demodulation)
+│   ├── keyboard.cpp          # Polling, key states, modifiers, stylus interaction
+│   └── main.cpp              # Entry point: setup(), loop(), high-level orchestration
+├── test/                     # Unit test suites (organized by feature and file)
+│   ├── receiving/
+│   │   ├── test_adc_buffer_full_interrupt/
+│   │   │   └── adc_buffer_full_interrupt.cpp
+│   │   ├── test_decode_single_bit_from_adc_window/
+│   │   │   └── decode_single_bit_from_adc_window.cpp
+│   │   ├── test_deliver_message/
+│   │   │   └── deliver_message.cpp
+│   │   ├── test_get_bit_from_top_frequency/
+│   │   │   └── get_bit_from_top_frequency.cpp
+│   │   ├── test_parse_message/
+│   │   │   └── parse_message.cpp
+│   ├── transmitting/
+│   │   └── test_packetize_message/
+│   │       └── packetize_message.cpp
+│   ├── mock_display.cpp
+│   └── mock_display.h
 ```
