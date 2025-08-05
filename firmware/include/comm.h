@@ -44,9 +44,9 @@ uint8_t* _test_get_adc_window_counter();
 
 extern const uint32_t buffer_size;
 
-uint16_t* _test_get_adc_buffer_half_1();
+uint16_t* _test_get_adc_buffer_prev_half();
 
-volatile uint16_t* _test_get_adc_buffer_half_2();
+volatile uint16_t* _test_get_adc_buffer_curr_half();
 
 uint16_t* _test_get_adc_buffer_full_bit();
 

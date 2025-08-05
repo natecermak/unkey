@@ -11,11 +11,11 @@
 
 // Helper to fill DMA buffer:
 void fill_dma_buffer(uint16_t value, bool alternate_values = false) {
-  volatile uint16_t* dma_buf = _test_get_adc_buffer_half_2();
+  volatile uint16_t* dma_buf = _test_get_adc_buffer_curr_half();
   for (size_t i = 0; i < buffer_size * 2; i++) {
     dma_buf[i] = alternate_values ? ((i % 2 == 0) ? 0 : value) : value;
   }
-  // Flushes CPU cache for adc_buffer_half_2 to ensure all written values are committed to RAM2.
+  // Flushes CPU cache for adc_buffer_curr_half to ensure all written values are committed to RAM2.
   // Without this, cached writes may not be visible to DMA or other code that reads from RAM:
   arm_dcache_flush((void*)dma_buf, sizeof(uint16_t) * buffer_size);
 }
@@ -29,7 +29,7 @@ void clear_adc_buffer_full_bit	() {
 }
 
 void setUp(void) {
-  // Fills adc_buffer_half_2 with known test data:
+  // Fills adc_buffer_curr_half with known test data:
   fill_dma_buffer(1234);
 
   // Gets pointer to adc_buffer_full_bit and zeroes it out:
@@ -54,7 +54,7 @@ void test_buffer_copy(void) {
   adc_buffer_full_interrupt();
   adc_buffer_full_interrupt();
 
-  // Confirsm adc_buffer_full_bit matches adc_buffer_half_2 (1234 pattern):
+  // Confirsm adc_buffer_full_bit matches adc_buffer_curr_half (1234 pattern):
   uint16_t* copy = _test_get_adc_buffer_full_bit	();
   for (size_t i = 0; i < buffer_size * 2; i++) {
     TEST_ASSERT_EQUAL(1234, copy[i]);
@@ -68,8 +68,8 @@ void test_bit_extraction_triggered(void) {
   float amplitude = 2047.0f;
   float offset = 2048.0f;
 
-  uint16_t* half1 = _test_get_adc_buffer_half_1();
-  volatile uint16_t* half2 = _test_get_adc_buffer_half_2();
+  uint16_t* half1 = _test_get_adc_buffer_prev_half();
+  volatile uint16_t* half2 = _test_get_adc_buffer_curr_half();
 
   for (uint32_t i = 0; i < buffer_size; i++) {
     float t = (float)i / sampling_rate;
@@ -86,7 +86,7 @@ void test_bit_extraction_triggered(void) {
     float sine = sinf(2.0f * PI * frequency * t);
     half2[i] = (uint16_t)(offset + amplitude * sine);
   }
-  // Flushes CPU cache after manually updating adc_buffer_half_2 again.
+  // Flushes CPU cache after manually updating adc_buffer_curr_half again.
   // Required because RAM2 is cacheable — without this, adc_buffer_full_interrupt()
   // might read stale data from RAM instead of the updated values:
   arm_dcache_flush((void*)half2, sizeof(uint16_t) * buffer_size);
