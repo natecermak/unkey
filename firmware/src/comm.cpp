@@ -207,11 +207,8 @@ void deliver_message(const char* message) {
   size_t len = strlen(message);
 
   // Rejects empty messages:
-  if (message[0] == '\0') return;
-
-  // Rejects overly long messages:
-  if (strlen(message) >= MAX_TEXT_LENGTH) return;
-
+ // Reject empty or overly long messages:
+  if (len == 0 || len >= MAX_TEXT_LENGTH) return;
   // Rejects framing characters used by protocol:
   for (size_t i = 0; i < len; i++) {
     uint8_t c = (uint8_t)message[i];
