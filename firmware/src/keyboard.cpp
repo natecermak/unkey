@@ -24,8 +24,7 @@ static IntervalTimer keyboard_poller_timer;
 // => 64 key states, i.e. 1 for pressed, 0 for not:
 static volatile uint64_t switch_state;
 
-// TODO: this is too low, for testing only:
-static const unsigned long screen_timeout_ms = 10000;
+static const unsigned long screen_timeout_ms = 15000;
 
 // Useful for debouncing/long presses:
 static uint32_t time_of_last_press_ms;
@@ -157,7 +156,7 @@ void poll_keyboard(ChatBufferState* state) {
     }
   } else if (screen_on && millis() - time_of_last_press_ms > screen_timeout_ms) {
     screen_on = false;
-    //digitalWrite(tft_led_pin, LOW);
+    digitalWrite(tft_led_pin, LOW);
   }
 }
 
@@ -166,6 +165,7 @@ void poll_keyboard(ChatBufferState* state) {
  * and starting a timer that calls poll_keyboard at regular intervals.
  */
 void setup_keyboard_poller() {
+  time_of_last_press_ms = millis();
   switch_state = 0;
 
   // Sets up SPI:
