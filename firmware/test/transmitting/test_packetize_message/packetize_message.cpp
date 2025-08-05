@@ -19,7 +19,6 @@ void setUp(void) {
 }
 
 void tearDown(void) {
-  // TODO: Can likely remove. Keeping for now for parity
 }
 
 void test_packetize_message(void) {

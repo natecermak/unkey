@@ -141,6 +141,29 @@ void test_does_not_parse_message_with_only_stop_footer() {
   TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
 }
 
+void test_ignores_noise_before_header() {
+  // Arbitrary bit sequence + [START][H][i][END]
+  uint8_t test_bits[] = {
+    1,1,1,1,1,1,1,1,
+    0,0,0,0,0,0,0,1,  // 0x01
+    0,0,0,0,0,0,1,0,  // 0x02
+    0,1,0,0,1,0,0,0,  // 'H'
+    0,1,1,0,1,0,0,1,  // 'i'
+    0,0,0,0,0,0,1,1,  // 0x03
+    0,0,0,0,0,1,0,0   // 0x04
+  };
+
+  memcpy(_test_get_bitstream(), test_bits, sizeof(test_bits));
+  *_test_get_bit_index() = sizeof(test_bits);
+
+  strcpy(_test_get_delivered_message(), "");
+
+  parse_message();
+
+  TEST_ASSERT_EQUAL_STRING("Hi", _test_get_delivered_message());
+}
+
+
 
 void setup() {
   Serial.begin(9600);
@@ -152,8 +175,7 @@ void setup() {
   RUN_TEST(test_truncates_message_that_exceeds_max_length);
   RUN_TEST(test_does_not_parse_message_with_only_start_header);
   RUN_TEST(test_does_not_parse_message_with_only_stop_footer);
-  // TODO: test_ignores_noise_before_header
-  // TODO: test_ignores_noise_after_footer
+  RUN_TEST(test_ignores_noise_before_header);
   UNITY_END();
 }
 

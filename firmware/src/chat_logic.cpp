@@ -118,3 +118,11 @@ void incoming_message_callback() {
 ChatBufferState* get_chat_buffer_state() {
   return &chat_buffer_state;
 }
+
+/**
+ * Resets the chat buffer state by zeroing out all fields in the ChatBufferState struct.
+ */
+void reset_chat_buffer_state() {
+  ChatBufferState* state = get_chat_buffer_state();
+  memset(state, 0, sizeof(ChatBufferState));
+}

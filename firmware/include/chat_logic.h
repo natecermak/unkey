@@ -16,11 +16,14 @@ ChatBufferState* get_chat_buffer_state();
 
 void add_message_to_chat_history(ChatBufferState* state, const char* message_text, const char* sender, const char* recipient);
 
-// TODO: packetize_message is not actually needed as a global func beyond visibility for testing package.
+#ifdef UNIT_TEST
 void packetize_message(const char* message, char* transmit_buffer);
+#endif // UNIT_TEST
 
 void send_message(const char* message_text);
 
 void incoming_message_callback();
+
+void reset_chat_buffer_state();
 
 #endif

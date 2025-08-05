@@ -183,7 +183,7 @@ void setup_transmitter() {
   pinMode(dac_cs_pin, OUTPUT);
   digitalWrite(dac_cs_pin, HIGH);
 
-  // TODO: FOR TESTING ONLY:
+  // TODO: Conditionally enable tx power to send mesage, then disable after
   set_tx_power_enable(true);  // tested: works
   delay(100);                 // wait for power to boot
   write_to_dac(0xA, 1U << 8);  // A is address for config, 8th bit is gain. set to gain=2
@@ -204,10 +204,31 @@ void deliver_message(const char* message) {
   }
 #endif
 
-  // TODO: Optionally handle escape sequences, validation, etc. For now we assume it's valid.
+  size_t len = strlen(message);
+
+  // Rejects empty messages:
+  if (message[0] == '\0') return;
+
+  // Rejects overly long messages:
+  if (strlen(message) >= MAX_TEXT_LENGTH) return;
+
+  // Rejects framing characters used by protocol:
+  for (size_t i = 0; i < len; i++) {
+    uint8_t c = (uint8_t)message[i];
+    if (c == 0x01 || c == 0x02 || c == 0x03 || c == 0x04) return;
+  }
+
+  // Removes escape chars:
+  char cleaned[MAX_TEXT_LENGTH];
+  size_t j = 0;
+  for (size_t i = 0; i < len && j < MAX_TEXT_LENGTH - 1; i++) {
+    char c = message[i];
+    if (c != '\r' && c != '\t') cleaned[j++] = c;
+  }
+  cleaned[j] = '\0';
 
   ChatBufferState* state = get_chat_buffer_state();
-  add_message_to_chat_history(state, message, RECIPIENT_VOID, RECIPIENT_UNKEY);
+  add_message_to_chat_history(state, cleaned, RECIPIENT_VOID, RECIPIENT_UNKEY);
   display_chat_history(state);
 }
 
