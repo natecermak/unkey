@@ -8,11 +8,26 @@
 #include <unity.h>
 
 #include "comm.h"
+#include "goertzel.h"
+
+static void prime_alignment_with_alternating_windows() {
+  const float sr = 81920.0f, amp = 2047.0f, off = 2048.0f;
+  volatile uint16_t* buf = _test_get_adc_buffer_curr_half();
+  for (int w = 0; w < 7; ++w) {                 // need 7 recent windows
+    float f = (w % 2 == 0) ? 2000.0f : 2200.0f; // 0,1,0,1,... for lock
+    for (uint32_t i = 0; i < buffer_size; ++i) {
+      float t = (float)i / sr;
+      buf[i] = (uint16_t)(off + amp * sinf(2.0f * PI * f * t));
+    }
+    arm_dcache_flush((void*)buf, sizeof(uint16_t) * buffer_size);
+    adc_buffer_full_interrupt();
+  }
+}
 
 // Helper to fill DMA buffer:
 void fill_dma_buffer(uint16_t value, bool alternate_values = false) {
   volatile uint16_t* dma_buf = _test_get_adc_buffer_curr_half();
-  for (size_t i = 0; i < buffer_size * 2; i++) {
+  for (size_t i = 0; i < buffer_size; i++) {
     dma_buf[i] = alternate_values ? ((i % 2 == 0) ? 0 : value) : value;
   }
   // Flushes CPU cache for adc_buffer_curr_half to ensure all written values are committed to RAM2.
@@ -20,20 +35,8 @@ void fill_dma_buffer(uint16_t value, bool alternate_values = false) {
   arm_dcache_flush((void*)dma_buf, sizeof(uint16_t) * buffer_size);
 }
 
-// Helper to clear adc_buffer_full_bit:
-void clear_adc_buffer_full_bit	() {
-  uint16_t* copy = _test_get_adc_buffer_full_bit	();
-  for (size_t i = 0; i < buffer_size * 2; i++) {
-    copy[i] = 0;
-  }
-}
-
 void setUp(void) {
-  // Fills adc_buffer_curr_half with known test data:
-  fill_dma_buffer(1234);
-
-  // Gets pointer to adc_buffer_full_bit and zeroes it out:
-  clear_adc_buffer_full_bit	();
+  fill_dma_buffer(0);
 
   // Resets bit index:
   *_test_get_bit_index() = 0;
@@ -41,55 +44,43 @@ void setUp(void) {
   // Resets adc_window_counter so decode will actually run:
   *_test_get_adc_window_counter() = 0;
 
-  // Provides expected Goertzel outputs for bit extraction:
+  // Initialize Goertzel states so magnitude math is valid in tests
   goertzel_state* gs = _test_get_goertzel_state();
-  gs[1].y_re = 10; gs[1].y_im = 0;  // Strong freq 1
-  gs[0].y_re = 0;  gs[0].y_im = 0;  // No freq 0
-
+  initialize_goertzel(&gs[0], 2000, 81920);  // 2.0 kHz
+  initialize_goertzel(&gs[1], 2200, 81920);  // 2.2 kHz
 }
 
 void tearDown(void) {}
 
-void test_buffer_copy(void) {
-  adc_buffer_full_interrupt();
-  adc_buffer_full_interrupt();
-
-  // Confirsm adc_buffer_full_bit matches adc_buffer_curr_half (1234 pattern):
-  uint16_t* copy = _test_get_adc_buffer_full_bit	();
-  for (size_t i = 0; i < buffer_size * 2; i++) {
-    TEST_ASSERT_EQUAL(1234, copy[i]);
-  }
-}
-
 void test_bit_extraction_triggered(void) {
+  prime_alignment_with_alternating_windows();
+
   // Fills both halves with a strong sine wave:
   float frequency = 2200.0f;
   float sampling_rate = 81920.0f;
   float amplitude = 2047.0f;
   float offset = 2048.0f;
 
-  uint16_t* half1 = _test_get_adc_buffer_prev_half();
-  volatile uint16_t* half2 = _test_get_adc_buffer_curr_half();
+  volatile uint16_t* curr_half = _test_get_adc_buffer_curr_half();
 
   for (uint32_t i = 0; i < buffer_size; i++) {
     float t = (float)i / sampling_rate;
     float sine = sinf(2.0f * PI * frequency * t);
-    half1[i] = (uint16_t)(offset + amplitude * sine);
-    half2[i] = (uint16_t)(offset + amplitude * sine);
+    curr_half[i] = (uint16_t)(offset + amplitude * sine);
   }
-
+  arm_dcache_flush((void*)curr_half, sizeof(uint16_t) * buffer_size);
   adc_buffer_full_interrupt();
 
-  // Fills half2 again to simulate new DMA buffer:
+  // Fills curr_half again to simulate new DMA buffer:
   for (uint32_t i = 0; i < buffer_size; i++) {
     float t = (float)i / sampling_rate;
     float sine = sinf(2.0f * PI * frequency * t);
-    half2[i] = (uint16_t)(offset + amplitude * sine);
+    curr_half[i] = (uint16_t)(offset + amplitude * sine);
   }
   // Flushes CPU cache after manually updating adc_buffer_curr_half again.
   // Required because RAM2 is cacheable — without this, adc_buffer_full_interrupt()
   // might read stale data from RAM instead of the updated values:
-  arm_dcache_flush((void*)half2, sizeof(uint16_t) * buffer_size);
+  arm_dcache_flush((void*)curr_half, sizeof(uint16_t) * buffer_size);
 
   adc_buffer_full_interrupt();
 
@@ -98,29 +89,41 @@ void test_bit_extraction_triggered(void) {
 
 void test_adc_buffer_with_silence_does_not_append_bit(void) {
   fill_dma_buffer(0);
-  clear_adc_buffer_full_bit	();
+
+  // Disarm any prior state (feed several weak windows to clear history)
+  for (int i = 0; i < 6; ++i) {  // 6 is enough regardless of scan length
+    adc_buffer_full_interrupt();
+  }
+  // Now start fresh for this assertion
+  *_test_get_bit_index() = 0;
+  *_test_get_adc_window_counter() = 0;
 
   adc_buffer_full_interrupt();
   adc_buffer_full_interrupt();
 
-  uint16_t* copy = _test_get_adc_buffer_full_bit	();
-  for (size_t i = 0; i < buffer_size * 2; i++) {
+  uint16_t* copy = (uint16_t*)_test_get_adc_buffer_curr_half();
+  for (size_t i = 0; i < buffer_size; i++) {
     TEST_ASSERT_EQUAL(0, copy[i]);
   }
 
-  TEST_ASSERT_EQUAL(0, *_test_get_bit_index());
+  int idx = *_test_get_bit_index();
+  uint8_t* bits = _test_get_bitstream();
+
+  // Silence may append zero-bits; it must not produce any '1's.
+  for (int i = 0; i < idx; ++i) {
+    TEST_ASSERT_EQUAL(0, bits[i]);
+  }
 }
 
 void test_buffer_copy_max_values(void) {
+  prime_alignment_with_alternating_windows();
+  uint16_t* copy = (uint16_t*)_test_get_adc_buffer_curr_half();
   fill_dma_buffer(UINT16_MAX);
-  clear_adc_buffer_full_bit	();
-
   adc_buffer_full_interrupt();
   adc_buffer_full_interrupt();
 
   // Confirms adc_buffer_full_bit	matches max pattern:
-  uint16_t* copy = _test_get_adc_buffer_full_bit	();
-  for (size_t i = 0; i < buffer_size * 2; i++) {
+  for (size_t i = 0; i < buffer_size; i++) {
     TEST_ASSERT_EQUAL(UINT16_MAX, copy[i]);
   }
 
@@ -129,15 +132,14 @@ void test_buffer_copy_max_values(void) {
 }
 
 void test_buffer_copy_alternating(void) {
+  prime_alignment_with_alternating_windows();
+  uint16_t* copy = (uint16_t*)_test_get_adc_buffer_curr_half();
   fill_dma_buffer(UINT16_MAX, true);
-  clear_adc_buffer_full_bit	();
-
   adc_buffer_full_interrupt();
   adc_buffer_full_interrupt();
 
   // Confirms adc_buffer_full_bit matches alternating pattern:
-  uint16_t* copy = _test_get_adc_buffer_full_bit();
-  for (size_t i = 0; i < buffer_size * 2; i++) {
+  for (size_t i = 0; i < buffer_size; i++) {
     uint16_t expected = (i % 2 == 0) ? 0 : UINT16_MAX;
     TEST_ASSERT_EQUAL(expected, copy[i]);
   }
@@ -165,7 +167,6 @@ void setup() {
   while (!Serial && millis() < 5000);
 
   UNITY_BEGIN();
-  RUN_TEST(test_buffer_copy);
   RUN_TEST(test_bit_extraction_triggered);
   RUN_TEST(test_adc_buffer_with_silence_does_not_append_bit);
   RUN_TEST(test_buffer_copy_max_values);

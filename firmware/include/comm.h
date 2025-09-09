@@ -44,18 +44,14 @@ uint8_t* _test_get_adc_window_counter();
 
 extern const uint32_t buffer_size;
 
-uint16_t* _test_get_adc_buffer_prev_half();
-
 volatile uint16_t* _test_get_adc_buffer_curr_half();
-
-uint16_t* _test_get_adc_buffer_full_bit();
 
 // Otherwise local functions that only need to be exposed globally for testing:
 void adc_buffer_full_interrupt();
-void decode_single_bit_from_adc_window();
+void decode_single_bit_from_adc_window(const uint16_t* samples, size_t size);
 void deliver_message(const char* message);
 void get_bit_from_top_frequency();
-void parse_message();
+void check_for_complete_packet();
 
 #endif // UNIT_TEST
 

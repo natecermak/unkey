@@ -37,26 +37,43 @@ static void (*deliver_fn_override)(const char*) = nullptr;
   RAM2 = OCRAM (what DMAMEM uses) --> Cacheable. Can get out of sync with the Teensy CPU’s data cache,
   which requires manual cache management: arm_dcache_flush() pushes CPU cache changes to RAM2;
   arm_dcache_delete() discards cache so the CPU reads fresh data from RAM2.
-
-  adc_buffer_prev_half is filled by the CPU using memcpy() and lives in regular (uncached) RAM1.
-
-  adc_buffer_full_bit is the concatenated buffer (half_1 + half_2) that gets analyzed.
 */
 
-// Defines the number of ADC samples collected into a buffer (adc_buffer_curr_half) every time the DMA completes a transfer
-// Number samples collected per ADC window (buffer_size) = adc_sampling_rate * bit period = 81920 * 5 ms = 410 samples
+// Number of ADC samples per DMA transfer into adc_buffer_curr_half.
+// Samples per window (buffer_size) = adc_sampling_rate * window_duration = 81,920 * 5 ms = 410 samples.
 #ifdef UNIT_TEST
 const uint32_t buffer_size = 410;
 #else
 static const uint32_t buffer_size = 410;
 #endif
 
-// Holds 5 ms ADC window chunk that was filled before the currrent (adc_buffer_curr_half):
-uint16_t adc_buffer_prev_half[buffer_size];
+// Holds one pair of Goertzel magnitudes:
+// Every time G runs, it gives a magnitude for each of the 2 frequencies we're checking
+struct goertzel_output_t {
+  float mag_2kHz;
+  float mag_2_2kHz;
+};
 
-// adc_buffer_prev_half is considered valid when it holds a full previous DMA buffer,
-// and therefore ready to pair with the current buffer (adc_buffer_curr_half) for decoding:
-bool prev_buffer_half_is_valid = false;
+// Stores recent Goertzel magnitudes for each bit window in a circular buffer:
+static const size_t G_HISTORY_LEN = 16;
+static goertzel_output_t goertzel_history_circ_buffer[G_HISTORY_LEN];
+static size_t goertzel_history_circ_buffer_index = 0;
+
+// If k = the min # of bits that need to be seen in order to identify the bit boundaries in relation to the sampling window,
+// then 2k + = the min # windows (Goertzel outputs) that need to be seen
+// Since k = 3, 2k + 1 = 7
+static const size_t ALIGNMENT_IDENTIFYING_G_OUTPUTS = 7;
+static goertzel_output_t window_history[ALIGNMENT_IDENTIFYING_G_OUTPUTS];
+static size_t window_history_index = 0;
+static bool bit_boundaries_are_known = false;
+static uint8_t bit_alignment_phase = 0; // 0 = even windows, 1 = odd windows
+static bool have_enough_windows = false;
+static size_t windows_collected = 0;
+// TODO: Currently an arbitrary number, might want to review/discuss these tradeoffs:
+// MAX_WEAK_WINDOWS too low: Could drop a signal too early that might otherwise be fine
+// MAX_WEAK_WINDOWS too high: Trying to detect a signal long after it's dropped out, or was never valid to begin with
+static const uint8_t MAX_WEAK_WINDOWS = 3;
+static uint8_t consecutive_weak_windows = 0;
 
 // ADC will sample at freq of 81.92 kHz:
 static const uint32_t adc_sampling_rate = 81920;
@@ -67,10 +84,8 @@ uint16_t tx_display_buffer_length = 0;
 ADC *adc = new ADC();
 DMAChannel dma_ch1;
 
-// Creates second half of buffer that comprises one bit period when combined with adc_buffer_prev_half, and
 // DMAMEM places adc_buffer_curr_half in RAM2 (OCRAM):
 DMAMEM static volatile uint16_t __attribute__((aligned(32))) adc_buffer_curr_half[buffer_size];
-uint16_t adc_buffer_full_bit[buffer_size * 2];
 
 // Gets incremented every time decode_single_bit_from_adc_window() runs, and decoding
 // only happens when adc_window_counter % SCAN_CHAIN_LENGTH == 0:
@@ -97,16 +112,18 @@ static const uint8_t PACKET_START2 = 0x02;
 static const uint8_t PACKET_END1   = 0x03;
 static const uint8_t PACKET_END2   = 0x04;
 
+// For preamble:
+static const uint16_t PREAMBLE_BITS = 35; // unit is bits. 35 bits * 10 ms = 350 ms total preamble length
+
 // ------------------------------------------------------------------
 // Functions
 // ------------------------------------------------------------------
 
 /**
- * Sends data to a DAC via SPI: prepares a 3-byte buffer with an address and a 12-bit value, then
- * sends the data using SPI communication.
- * MCP48CXDX1 -- 24-bit messages.
- * top byte: 5-bit address, 2 "command bits", 1 dont-care
- * bottom 2 bytes: 4 dont-care, 12 data bits
+ * Sends a 24‑bit SPI frame to the DAC: [addr/ctrl (8)] + [data (16)].
+ * For MCP48CxDx1: top byte = 5‑bit register address + 2 command bits (must be 0 to write) + 1 don't‑care.
+ * Lower 16 bits carry the 12‑bit value (left‑aligned as per device spec; unused bits are don't‑care).
+ * Expects value in the 0..4095 range.
  */
 void write_to_dac(uint8_t address, uint16_t value) {
   uint8_t buf[3];
@@ -122,13 +139,45 @@ void write_to_dac(uint8_t address, uint16_t value) {
   SPI.endTransaction();
 }
 
+static inline void transmit_bit(uint8_t bit, const tx_parameters_t* tx_parameters) {
+  // w is the angular frequency, wherein w = 2 * pi * freq
+  const float w = (bit ? (2 * PI * tx_parameters->freq_high / 1e6)
+                       : (2 * PI * tx_parameters->freq_low /  1e6));
+  const unsigned long bit_start_time = micros();
+  unsigned long curr_bit_elapsed_useconds;
+
+  // Generates a sine wave for the current bit:
+  while ((curr_bit_elapsed_useconds = micros() - bit_start_time) < tx_parameters->usec_per_bit) {
+    // The DAC sample value (integer 0–409) computed from the sine at that instant - what we actually write to the DAC:
+    const uint16_t dac_sample_value = (uint16_t)(((sinf(w * curr_bit_elapsed_useconds) + 1.0f) * 0.5f) * 409);
+
+    // Do not want an interrupt to run mid-sample, so:
+    noInterrupts();
+    write_to_dac(0, dac_sample_value);
+    interrupts();
+  }
+}
+
+static inline void transmit_preamble(const tx_parameters_t* tx_parameters) {
+  // Arbitrarily choosing to start the preamble with a 1 instead of a 0:
+  uint8_t curr_bit = 1;
+
+  for (uint16_t i = 0; i < PREAMBLE_BITS; i++) {
+    transmit_bit(curr_bit, tx_parameters);
+    // Bitwise XOR assignment operator is ^=: if b is 1, 1 ^ 1 = 0 and if b is 0, 0 ^ 1 = 1
+    // Alternates 1,0,1,0,...
+    curr_bit ^= 1;
+  }
+}
+
 /**
- * Transmits a message by modulating each character's bits into analog tones.
- * Note: address of 0 --> writing to channel 0 of the DAC.
- * write_to_dac(address=0, val=0): DAC receives a 24-bit message that sets the output to the minimum voltage (0V)
- * write_to_dac(address=0, val=4095): DAC receives a 24-bit message that sets the output to the maximum voltage
+ * FSK transmitter: for each char, emit its 8 bits MSB‑first as tones.
+ * Uses freq_low for 0 and freq_high for 1; each bit lasts usec_per_bit microseconds.
+ * The sine is generated with w = 2πf and time in microseconds, so f is in Hz and time is µs.
+ * Note: the current scaling multiplies by 409 (≈10‑bit). For a 12‑bit DAC, use 4095.
  */
 void transmit_message(const char* message_to_transmit, const tx_parameters_t* tx_parameters) {
+  transmit_preamble(tx_parameters);
   for (int i = 0; message_to_transmit[i] != '\0'; i++) {
     Serial.print("Processing letter: ");
     Serial.println(message_to_transmit[i]);
@@ -144,7 +193,7 @@ void transmit_message(const char* message_to_transmit, const tx_parameters_t* tx
       unsigned long bit_start = micros();
       unsigned long time_usec;
       uint16_t dac_value;
-      // Generates a sine wave for current bit for 10 ms:
+      // Generates a sine wave for the current bit for usec_per_bit microseconds:
       while ((time_usec = micros() - bit_start) < tx_parameters->usec_per_bit) {
         // Gets the phase angle at curr time in microsec and scales for 12 bit DAC:
         dac_value = (uint16_t)(((sin(w * time_usec) + 1.0) / 2.0) * 409);
@@ -167,15 +216,15 @@ void set_charge_amplifier_gain(uint8_t gain_index) {
 }
 
 /**
- * Enables/disables transmission power by writing high or low to the tx_power_en_pin pin.
+ * Enables or disables the TX power rail via tx_power_en_pin.
  */
 inline void set_tx_power_enable(bool enable) {
   digitalWriteFast(tx_power_en_pin, (enable) ? HIGH : LOW);
 }
 
 /**
- * Sets up the transmitter by configuring output pins, enabling transmission power, and writing initial values to a DAC (Digital-to-Analog Converter).
- * Configures gain and voltage references for the DAC.
+ * Initializes TX path: configures control pins, enables TX power, and programs DAC config/VREF.
+ * Note: leaves TX power ON (set_tx_power_enable(true)); caller can disable after transmit.
  */
 void setup_transmitter() {
   pinMode(tx_power_en_pin, OUTPUT);
@@ -191,8 +240,10 @@ void setup_transmitter() {
 }
 
 /**
- * Adds message to chat history and refreshes display,
- * or uses test override if in UNIT_TEST mode.
+ * Delivers a decoded message to the UI:
+ * - In UNIT_TEST, calls an optional test override if set.
+ * - Validates length and rejects protocol framing bytes.
+ * - Strips simple escape chars, appends to chat history, refreshes display.
  */
 void deliver_message(const char* message) {
   // If a test override is set, this will call it instead of performing normal delivery logic.
@@ -206,8 +257,7 @@ void deliver_message(const char* message) {
 
   size_t len = strlen(message);
 
-  // Rejects empty messages:
- // Reject empty or overly long messages:
+  // Reject empty or overly long messages:
   if (len == 0 || len >= MAX_TEXT_LENGTH) return;
   // Rejects framing characters used by protocol:
   for (size_t i = 0; i < len; i++) {
@@ -229,33 +279,119 @@ void deliver_message(const char* message) {
   display_chat_history(state);
 }
 
-/**
- * Appends 0 or 1 to bitstream based on which frequency has higher magnitude.
- */
-void get_bit_from_top_frequency() {
-  // Calculates the magnitude of the complex output for each frequency bin:
-  float mag0 = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
-  float mag1 = sqrtf(powf(gs[1].y_re, 2) + powf(gs[1].y_im, 2));
-  float total_mag = mag0 + mag1;
-
-  // Ignores noisy or weak signals:
-  if (total_mag < MAGNITUDE_THRESHOLD) {
-    return;
+static float average_window_magnitude(size_t window_count) {
+  float sum = 0.0f;
+  for (size_t i = 0; i < window_count; i++) {
+    size_t index = (window_history_index + i) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
+    sum += window_history[index].mag_2kHz + window_history[index].mag_2_2kHz;
   }
+  return sum / window_count;
+}
 
-  uint8_t bit = (mag1 > mag0) ? 1 : 0;
+static inline uint8_t determine_bit(const goertzel_output_t* g_ouput) {
+  if (g_ouput->mag_2_2kHz > g_ouput->mag_2kHz) return 1;
+  if (g_ouput->mag_2_2kHz < g_ouput->mag_2kHz) return 0;
+  return 255; // out of range value (uint8_t ~ 0-255) that can be used to check for error case
+}
 
-  if (bit_index < MAX_BITS) {
-    bitstream[bit_index++] = bit;
+static void find_bit_boundaries(void) {
+  if (!have_enough_windows || bit_boundaries_are_known) return;
+
+  // Basically just deciding here the signal is viable if the average magnitude is above some predetermined threshold
+  float avg_mag = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS);
+  if (avg_mag < MAGNITUDE_THRESHOLD) return;
+
+  // Outer loop tries both phases
+  for (uint8_t phase = 0; phase < 2; phase++) {
+    int alternating_pairs = 0;
+
+    // Inner loop tries pairs of windows for each phase
+    for (size_t i = 0; i + 1 < ALIGNMENT_IDENTIFYING_G_OUTPUTS; i += 2) {
+      size_t idx0 = (window_history_index + i + phase) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
+      size_t idx1 = (window_history_index + i + 1 + phase) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
+
+      uint8_t b0 = determine_bit(&window_history[idx0]);
+      uint8_t b1 = determine_bit(&window_history[idx1]);
+
+      // Skip if either window was ambiguous (tie → 255)
+      if (b0 == 255 || b1 == 255) continue;
+      if (b0 != b1) {
+        alternating_pairs++;
+      }
+
+    }
+
+    // If we saw 3 alternating pairs, assume we found the correct bit boundaries
+    if (alternating_pairs >= 3) {
+      bit_alignment_phase = phase;
+      bit_boundaries_are_known = true;
+      return; // stop searching once locked
+    }
+
   }
-
 }
 
 /**
- * Reconstructs bytes from bitstream, extracts a valid message
- * between header/footer, and delivers it to chat history.
+ * Computes Goertzel magnitudes for 2.0 kHz and 2.2 kHz, logs them, and (if signal is strong enough)
+ * appends 0/1 to bitstream based on which bin is larger.
+ * Uses MAGNITUDE_THRESHOLD on (mag_2kHz + mag_2_2kHz) to suppress noise.
  */
-void parse_message() {
+void get_bit_from_top_frequency() {
+  // Calculates the magnitude of the complex output for each frequency bin:
+  float mag_2kHz = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
+  float mag_2_2kHz = sqrtf(powf(gs[1].y_re, 2) + powf(gs[1].y_im, 2));
+
+  // Stores magnitudes in circ buffer for later analysis:
+  goertzel_history_circ_buffer[goertzel_history_circ_buffer_index] = { mag_2kHz, mag_2_2kHz };
+  goertzel_history_circ_buffer_index = (goertzel_history_circ_buffer_index + 1) % G_HISTORY_LEN;
+
+  // Keeps a short rolling history used for boundary detection:
+  window_history[window_history_index] = { mag_2kHz, mag_2_2kHz };
+  window_history_index = (window_history_index + 1) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
+
+  // Keep counting windows until we’ve seen enough to attempt boundary detection:
+  if (!have_enough_windows) {
+    windows_collected++;
+    if (windows_collected >= ALIGNMENT_IDENTIFYING_G_OUTPUTS) {
+      have_enough_windows = true;
+    }
+  }
+
+  // Use the rolling window_history to determine where bit edges fall (sets bit_boundaries_are_known/bit_alignment_phase):
+  find_bit_boundaries();
+
+  // If boundaries aren’t established yet, stop here (only magnitudes logged this window):
+  if (!bit_boundaries_are_known) return;
+  else {
+    // Boundaries are known → keep monitoring average strength:
+    float avg_mag_lock = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS);
+    if (avg_mag_lock < MAGNITUDE_THRESHOLD) {
+      if (++consecutive_weak_windows >= MAX_WEAK_WINDOWS) {
+        // Signal stayed weak too long → reset state:
+        bit_boundaries_are_known = false;
+        consecutive_weak_windows = 0;
+        have_enough_windows = false;
+        windows_collected = 0;
+        return; // don't need to proceed with trying to append a bit at this point
+      }
+    } else {
+      consecutive_weak_windows = 0;
+    }
+  }
+
+  // Decide this window’s bit (1 if 2.2 kHz stronger, else 0) and append if there’s space:
+  uint8_t bit = (mag_2_2kHz > mag_2kHz) ? 1 : 0;
+  if (bit_index < MAX_BITS) {
+    bitstream[bit_index++] = bit;
+  }
+}
+
+/**
+ * Reassembles bytes MSB‑first from bitstream[], searches for 2‑byte header/footer,
+ * copies the payload to a C‑string, delivers it, then resets the bit buffer.
+ * Header: PACKET_START1, PACKET_START2. Footer: PACKET_END1, PACKET_END2.
+ */
+void check_for_complete_packet() {
   // Buffer to hold reconstructed bytes from the bitstream:
   static char decoded_bytes[MAX_PACKET_SIZE];
 
@@ -313,10 +449,11 @@ void parse_message() {
 }
 
 /**
- * Applies a function to each goertzel_state in gs[].
- * Pass either one_param_fn (if sample == -1) or two_param_fn with a sample.
- * Only one function pointer should be non-NULL.
-*/
+ * Applies a callback to each goertzel_state in gs[].
+ * Pass exactly one of:
+ *  - two_param_fn(g, sample) to process a sample, or
+ *  - one_param_fn(g) for no‑sample ops (finalize/reset). In this case pass sample = -1.
+ */
 void for_each_goertzel_state(void (*one_param_fn)(goertzel_state*), void (*two_param_fn)(goertzel_state*, int), int sample) {
   for (int i = 0; i < gs_len; i++) {
     // Gets a pointer to the j-th element of the gs array, which holds Goertzel filter state:
@@ -331,60 +468,50 @@ void for_each_goertzel_state(void (*one_param_fn)(goertzel_state*), void (*two_p
 }
 
 /**
- * Processes one full ADC window to decode a bit, updates the bitstream, and attempts message parsing.
+ * Processes one ADC window at bit-aligned intervals:
+ * runs Goertzel, extracts a bit, appends it to the bitstream, checks for a complete packet, then resets Goertzel state.
  */
-void decode_single_bit_from_adc_window() {
-  // Skips processing unless a full bit period's worth of data is ready:
-  if (adc_window_counter++ % SCAN_CHAIN_LENGTH != 0) return;
+void decode_single_bit_from_adc_window(const uint16_t* samples, size_t size) {
+  uint8_t curr_phase = adc_window_counter++ % SCAN_CHAIN_LENGTH;
 
-  // For each ADC sample in the buffer, update each Goertzel filter state with this sample:
-  for (size_t i = 0; i < buffer_size; i++) {
-    for_each_goertzel_state(NULL, update_goertzel, adc_buffer_full_bit[i]);
+  // If we know for sure the current window is out of phase, don't bother
+  // with processing it:
+  if (bit_boundaries_are_known && curr_phase != bit_alignment_phase) return;
+
+  // Feeds each ADC sample into the Goertzel filters:
+  for (size_t i = 0; i < size; i++) {
+    for_each_goertzel_state(NULL, update_goertzel, samples[i]);
   }
 
+  // Computes this window’s frequency results:
   for_each_goertzel_state(finalize_goertzel, NULL, -1);
 
   get_bit_from_top_frequency();
-  parse_message();
+  check_for_complete_packet();
 
   // Resets internal Goertzel state (not y_re/y_im):
   for_each_goertzel_state(reset_goertzel, NULL, -1);
 }
 
 /**
- * Called when DMA fills the ADC buffer. It clears the DMA interrupt, copies the buffer, re-enables DMA, and
- * triggers bit extraction from the data.
- - A bit is encoded over 10 ms of audio.
- - Each ADC buffer = 5 ms of samples (410 samples at 81.92 kHz).
- - Therefore, two buffers = 1 bit period.
+ * Called when DMA fills the ADC buffer. Clears the DMA interrupt, invalidates CPU cache for the DMA buffer,
+ * passes the fresh samples to the decoder, then re-enables DMA.
+ * DMA writes to RAM2 -> decode_single_bit_from_adc_window reads from RAM2.
+ * Each ADC buffer ≈ 5 ms (410 samples @ 81.92 kHz). If SCAN_CHAIN_LENGTH == 2 and TX bit period is ~10 ms,
+ * two buffers correspond to one bit period.
  */
 void adc_buffer_full_interrupt() {
   // Clears the DMA interrupt flag so it's ready for the next transfer:
   dma_ch1.clearInterrupt();
 
-  if (prev_buffer_half_is_valid) {
-    // Combines prev + current into adc_buffer_full_bit:
-    memcpy(adc_buffer_full_bit, adc_buffer_prev_half, sizeof(adc_buffer_prev_half));
-    memcpy(adc_buffer_full_bit + buffer_size, (const void*)adc_buffer_curr_half, sizeof(adc_buffer_curr_half));
-  } else {
-    // Not ready to decode yet, just store current into prev and return:
-    memcpy(adc_buffer_prev_half, (const void*)adc_buffer_curr_half, sizeof(adc_buffer_curr_half));
-    prev_buffer_half_is_valid = true;
-    dma_ch1.enable();
-    return;
-  }
-
   // Invalidates CPU cache for adc_buffer_curr_half to ensure CPU sees the latest data written by DMA (RAM2 is cacheable):
-  if ((uint32_t)adc_buffer_curr_half >= 0x20200000u) {
-    arm_dcache_delete((void *)adc_buffer_curr_half, sizeof(adc_buffer_curr_half));
-  }
+  arm_dcache_delete((void *)adc_buffer_curr_half, sizeof(adc_buffer_curr_half));
+
+  // Uses Goertzel algorithm to analyze the frequency content of a full buffer of ADC samples:
+  decode_single_bit_from_adc_window((const uint16_t*)adc_buffer_curr_half, buffer_size);
 
   // Re-enables the DMA channel for next read:
   dma_ch1.enable();
-
-  // Uses Goertzel algorithm to analyze the frequency content of a series of ADC samples:
-  decode_single_bit_from_adc_window();
-  prev_buffer_half_is_valid = false;
 }
 
 /**
@@ -415,7 +542,7 @@ void setup_receiver() {
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
   #pragma GCC diagnostic pop
 
-  // Each time you sample from ADC you get 2 bytes, so that's why we're using buffer_size * 2:
+  // destinationBuffer takes a sample count here (not bytes). The library handles element width internally:
   dma_ch1.destinationBuffer((uint16_t *)adc_buffer_curr_half, buffer_size);
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
@@ -471,18 +598,9 @@ uint8_t* _test_get_adc_window_counter() {
   return &adc_window_counter;
 }
 
-uint16_t* _test_get_adc_buffer_prev_half() {
-  return adc_buffer_prev_half;
-}
-
 // Returns a pointer to adc_buffer_curr_half so tests can fill it with mock ADC data - volatile because it's the DMA destination:
 volatile uint16_t* _test_get_adc_buffer_curr_half() {
   return adc_buffer_curr_half;
-}
-
-// Returns a pointer to adc_buffer_full_bit	so tests can inspect or clear copied ADC data:
-uint16_t* _test_get_adc_buffer_full_bit() {
-  return adc_buffer_full_bit;
 }
 
 #endif
