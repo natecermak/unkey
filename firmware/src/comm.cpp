@@ -139,6 +139,10 @@ void write_to_dac(uint8_t address, uint16_t value) {
   SPI.endTransaction();
 }
 
+/**
+ * Outputs one bit as a sine wave: picks high/low frequency based on bit value,
+ * then drives the DAC sample-by-sample for the full bit duration.
+ */
 static inline void transmit_bit(uint8_t bit, const tx_parameters_t* tx_parameters) {
   // w is the angular frequency, wherein w = 2 * pi * freq
   const float w = (bit ? (2 * PI * tx_parameters->freq_high / 1e6)
@@ -158,6 +162,10 @@ static inline void transmit_bit(uint8_t bit, const tx_parameters_t* tx_parameter
   }
 }
 
+/**
+ * Sends the preamble sequence (alternating 1/0 bits for PREAMBLE_BITS length)
+ * to help the receiver establish timing and alignment.
+ */
 static inline void transmit_preamble(const tx_parameters_t* tx_parameters) {
   // Arbitrarily choosing to start the preamble with a 1 instead of a 0:
   uint8_t curr_bit = 1;
@@ -279,6 +287,10 @@ void deliver_message(const char* message) {
   display_chat_history(state);
 }
 
+/**
+ * Computes the average combined magnitude (2.0 kHz + 2.2 kHz)
+ * over the most recent `window_count` entries in window_history.
+ */
 static float average_window_magnitude(size_t window_count) {
   float sum = 0.0f;
   for (size_t i = 0; i < window_count; i++) {
@@ -288,12 +300,22 @@ static float average_window_magnitude(size_t window_count) {
   return sum / window_count;
 }
 
+/**
+ * Returns 0 if 2.0 kHz is stronger, 1 if 2.2 kHz is stronger,
+ * or 255 if magnitudes are equal (ambiguous).
+ */
 static inline uint8_t determine_bit(const goertzel_output_t* g_ouput) {
   if (g_ouput->mag_2_2kHz > g_ouput->mag_2kHz) return 1;
   if (g_ouput->mag_2_2kHz < g_ouput->mag_2kHz) return 0;
   return 255; // out of range value (uint8_t ~ 0-255) that can be used to check for error case
 }
 
+/**
+ * Uses the rolling window_history to decide bit boundaries.
+ * Checks both possible phases; if at least 3 alternating 0/1 pairs
+ * are found and average magnitude is above threshold,
+ * sets bit_alignment_phase and marks boundaries as known.
+ */
 static void find_bit_boundaries(void) {
   if (!have_enough_windows || bit_boundaries_are_known) return;
 
@@ -318,7 +340,6 @@ static void find_bit_boundaries(void) {
       if (b0 != b1) {
         alternating_pairs++;
       }
-
     }
 
     // If we saw 3 alternating pairs, assume we found the correct bit boundaries
@@ -327,7 +348,6 @@ static void find_bit_boundaries(void) {
       bit_boundaries_are_known = true;
       return; // stop searching once locked
     }
-
   }
 }
 
