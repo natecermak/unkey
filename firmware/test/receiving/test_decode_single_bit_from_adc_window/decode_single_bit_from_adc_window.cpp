@@ -44,37 +44,9 @@ void setUp(void) {
 
 void tearDown(void) {}
 
-// void test_decoding_single_bit_increments_bitstream_index(void) {
-//   *_test_get_adc_window_counter() = 0;
-//   prime_phase_for_decode();
-//   // Force alignment so next decode call lands on the chosen phase
-//   *_test_get_adc_window_counter() = bit_alignment_phase;
-
-
-//   // Fills ADC buffer with a strong 2200 Hz sine wave:
-//   float frequency = 2200.0f;
-//   float sampling_rate = 81920.0f;
-//   float amplitude = 1500.0f;
-//   float offset = 2048.0f;
-
-//   // Try up to 3 consecutive windows so one lands on the decode phase
-//   for (int tries = 0; tries < 3 && *_test_get_bit_index() == 0; ++tries) {
-//     for (uint32_t i = 0; i < buffer_size; i++) {
-//       float t = (float)i / sampling_rate;
-//       mock_adc_buffer[i] = (uint16_t)(offset + amplitude * sinf(2.0f * PI * frequency * t));
-//     }
-//     decode_single_bit_from_adc_window(mock_adc_buffer, buffer_size);
-//   }
-
-//   // We expect at least one bit by now
-//   TEST_ASSERT_TRUE_MESSAGE(*_test_get_bit_index() > 0,
-//     "Expected a bit after priming + up to 3 aligned windows");
-
-// }
-
 void test_skips_decoding_when_gating_fails(void) {
   // Sets adc_window_counter to 1, which is not a multiple of SCAN_CHAIN_LENGTH and therefore the decoding logic shouldn't run:
-  *_test_get_adc_window_counter() = 1; 
+  *_test_get_adc_window_counter() = 1;
 
   // Fill mock buffer with dummy data:
   for (size_t i = 0; i < mock_adc_buffer_size; i++) {
@@ -148,7 +120,6 @@ void setup() {
   while (!Serial && millis() < 5000);
 
   UNITY_BEGIN();
-  // RUN_TEST(test_decoding_single_bit_increments_bitstream_index);
   RUN_TEST(test_skips_decoding_when_gating_fails);
   RUN_TEST(test_correct_bit_extracted_from_strongest_freq);
   RUN_TEST(test_goertzel_states_reset_after_decode);

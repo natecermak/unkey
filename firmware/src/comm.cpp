@@ -115,9 +115,21 @@ static const uint8_t PACKET_END2   = 0x04;
 // For preamble:
 static const uint16_t PREAMBLE_BITS = 35; // unit is bits. 35 bits * 10 ms = 350 ms total preamble length
 
+// Plotting amplitude values:
+// Since these are updated within an interrupt, made these volatile-qualified to ensure the compiler is reading/writing these directly to/from memory instead of to/from a CPU register with potentially outdated data:
+volatile float curr_mag_2kHz = 0.0;
+volatile float curr_mag_2_2kHz = 0.0;
+volatile bool mag_ready = false;
+
 // ------------------------------------------------------------------
 // Functions
 // ------------------------------------------------------------------
+
+static inline void update_magnitudes_to_plot(float mag_2_kHz, float mag_2_2_kHz) {
+  curr_mag_2kHz = mag_2_kHz;
+  curr_mag_2_2kHz = mag_2_2_kHz;
+  mag_ready = true;
+}
 
 /**
  * Sends a 24‑bit SPI frame to the DAC: [addr/ctrl (8)] + [data (16)].
@@ -360,6 +372,8 @@ void get_bit_from_top_frequency() {
   // Calculates the magnitude of the complex output for each frequency bin:
   float mag_2kHz = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
   float mag_2_2kHz = sqrtf(powf(gs[1].y_re, 2) + powf(gs[1].y_im, 2));
+
+  update_magnitudes_to_plot(mag_2kHz, mag_2_2kHz);
 
   // Stores magnitudes in circ buffer for later analysis:
   goertzel_history_circ_buffer[goertzel_history_circ_buffer_index] = { mag_2kHz, mag_2_2kHz };

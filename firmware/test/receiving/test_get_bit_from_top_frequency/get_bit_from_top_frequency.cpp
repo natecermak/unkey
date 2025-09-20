@@ -58,7 +58,7 @@ void test_get_bit_from_top_frequency_does_not_overflow_buffer(void) {
 
 void test_get_bit_from_top_frequency_appends_correct_bit(void) {
   prime_phase_with_alternating_bins();
-  
+
   // Returns a pointer to the internal array of goertzel_state structs:
   goertzel_state* gs = _test_get_goertzel_state();
 
