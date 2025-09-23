@@ -75,14 +75,8 @@ static size_t windows_collected = 0;
 static const uint8_t MAX_WEAK_WINDOWS = 3;
 static uint8_t consecutive_weak_windows = 0;
 
-// ADC will sample at freq of 81.92 kHz:
-static const uint32_t adc_sampling_rate = 81920;
-
-char tx_display_buffer[MAX_TEXT_LENGTH];
-uint16_t tx_display_buffer_length = 0;
-
-ADC *adc = new ADC();
-DMAChannel dma_ch1;
+static ADC *adc = new ADC();
+static DMAChannel dma_ch1;
 
 // DMAMEM places adc_buffer_curr_half in RAM2 (OCRAM):
 DMAMEM static volatile uint16_t __attribute__((aligned(32))) adc_buffer_curr_half[buffer_size];
@@ -94,10 +88,7 @@ static uint8_t adc_window_counter = 0;
 // An array that will store state for the Goertzel algo - each goertzel_state obj
 // holds data to compute G algo for that frequency:
 static const uint8_t gs_len = 10;
-goertzel_state gs[gs_len];
-
-// Charge amplifier gain:
-static const int adg728_i2c_address = 76;
+static goertzel_state gs[gs_len];
 
 // For get_bit_from_top_frequency:
 static const int MAX_BITS = 256;
@@ -230,6 +221,8 @@ void transmit_message(const char* message_to_transmit, const tx_parameters_t* tx
  * It shifts 1U left by gain_index to generate a specific binary pattern and writes this value to the amplifier's address.
  */
 void set_charge_amplifier_gain(uint8_t gain_index) {
+  // Charge amplifier gain:
+  static const int adg728_i2c_address = 76;
   Wire.beginTransmission(adg728_i2c_address);
   Wire.write(1U << gain_index);
   Wire.endTransmission();
@@ -553,6 +546,9 @@ void adc_buffer_full_interrupt() {
  * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to buffer.
  */
 void setup_receiver() {
+  // ADC will sample at freq of 81.92 kHz:
+  static const uint32_t adc_sampling_rate = 81920;
+
   // Sets readPin_adc_0_pin as the input pin for ADC sampling:
   pinMode(readPin_adc_0_pin, INPUT);
 
