@@ -41,7 +41,10 @@ void test_get_bit_from_top_frequency_sets_bit_to_0_when_mag0_is_stronger(void) {
 
   get_bit_from_top_frequency();
 
-  TEST_ASSERT_EQUAL_UINT8(0, _test_get_bitstream()[0]);
+   TEST_ASSERT_EQUAL_UINT8_MESSAGE(
+    0, _test_get_bitstream()[0],
+    "Dominant 2.0 kHz (bin0) should yield bit 0 (not 1)."
+  );
 }
 
 void test_get_bit_from_top_frequency_does_not_overflow_buffer(void) {
@@ -53,7 +56,10 @@ void test_get_bit_from_top_frequency_does_not_overflow_buffer(void) {
   get_bit_from_top_frequency();
 
   // Checks that index didn't change:
-  TEST_ASSERT_EQUAL(MAX_BITS, *_test_get_bit_index());
+  TEST_ASSERT_EQUAL_MESSAGE(
+    MAX_BITS, *_test_get_bit_index(),
+    "Buffer full: bit_index must not change when at capacity (no append)."
+  );
 }
 
 void test_get_bit_from_top_frequency_appends_correct_bit(void) {
@@ -70,7 +76,10 @@ void test_get_bit_from_top_frequency_appends_correct_bit(void) {
 
   get_bit_from_top_frequency();
 
-  TEST_ASSERT_EQUAL_UINT8(0x1, _test_get_bitstream()[0]);
+  TEST_ASSERT_EQUAL_UINT8_MESSAGE(
+    0x1, _test_get_bitstream()[0],
+    "Dominant 2.2 kHz (bin1) should yield bit 1 (not 0)."
+  );
 }
 
 

@@ -56,7 +56,10 @@ void test_skips_decoding_when_gating_fails(void) {
   decode_single_bit_from_adc_window(mock_adc_buffer, mock_adc_buffer_size);
 
   // If the bit index hasn't been incremented, we know the decoding logic was skipped:
-  TEST_ASSERT_EQUAL(0, *_test_get_bit_index());
+  TEST_ASSERT_EQUAL_MESSAGE(
+    0, *_test_get_bit_index(),
+    "Window gating: misaligned phase should skip decoding; bit_index must remain 0 (not 1)."
+  );
 }
 
 void test_correct_bit_extracted_from_strongest_freq(void) {
@@ -84,7 +87,10 @@ void test_correct_bit_extracted_from_strongest_freq(void) {
 
   uint8_t* bitstream = _test_get_bitstream();
   // Expect freq with magnitude 10 to get picked, so the first bit should be a 1:
-  TEST_ASSERT_EQUAL(1, bitstream[0]);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    1, bitstream[0],
+    "Bit extraction: stronger 2.2 kHz signal should yield bit 1 (not 0)."
+  );
 }
 
 void test_goertzel_states_reset_after_decode() {
@@ -109,9 +115,12 @@ void test_goertzel_states_reset_after_decode() {
 
   // After decoding, these internal states should be cleared:
   for (int i = 0; i < 10; i++) {
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, gs[i].s);
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, gs[i].s_z1);
-    TEST_ASSERT_EQUAL(0, gs[i].n);
+    TEST_ASSERT_EQUAL_FLOAT_MESSAGE(0.0f, gs[i].s,
+      "Goertzel reset: state.s must be cleared to 0.0f after decode.");
+    TEST_ASSERT_EQUAL_FLOAT_MESSAGE(0.0f, gs[i].s_z1,
+      "Goertzel reset: state.s_z1 must be cleared to 0.0f after decode.");
+    TEST_ASSERT_EQUAL_MESSAGE(0, gs[i].n,
+      "Goertzel reset: state.n must be cleared to 0 after decode.");
   }
 }
 

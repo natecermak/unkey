@@ -84,7 +84,8 @@ void test_bit_extraction_triggered(void) {
 
   adc_buffer_full_interrupt();
 
-  TEST_ASSERT_EQUAL(1, *_test_get_bit_index());
+  TEST_ASSERT_EQUAL_MESSAGE(1, *_test_get_bit_index(),
+    "Bit extraction failed: after feeding two 2.2 kHz buffers, bit_index should be 1 (got 0).");
 }
 
 void test_adc_buffer_with_silence_does_not_append_bit(void) {
@@ -103,7 +104,8 @@ void test_adc_buffer_with_silence_does_not_append_bit(void) {
 
   uint16_t* copy = (uint16_t*)_test_get_adc_buffer_curr_half();
   for (size_t i = 0; i < buffer_size; i++) {
-    TEST_ASSERT_EQUAL(0, copy[i]);
+    TEST_ASSERT_EQUAL_MESSAGE(0, copy[i],
+      "Silence buffer check failed: DMA copy should remain zero-filled, but a nonzero sample was found.");
   }
 
   int idx = *_test_get_bit_index();
@@ -111,7 +113,8 @@ void test_adc_buffer_with_silence_does_not_append_bit(void) {
 
   // Silence may append zero-bits; it must not produce any '1's.
   for (int i = 0; i < idx; ++i) {
-    TEST_ASSERT_EQUAL(0, bits[i]);
+    TEST_ASSERT_EQUAL_MESSAGE(0, bits[i],
+      "Silence decoding failed: bitstream should contain only 0s for silence, but a 1 was appended.");
   }
 }
 
@@ -124,11 +127,13 @@ void test_buffer_copy_max_values(void) {
 
   // Confirms adc_buffer_full_bit	matches max pattern:
   for (size_t i = 0; i < buffer_size; i++) {
-    TEST_ASSERT_EQUAL(UINT16_MAX, copy[i]);
+    TEST_ASSERT_EQUAL_MESSAGE(UINT16_MAX, copy[i],
+      "Max-value buffer copy failed: every DMA sample should be UINT16_MAX, but a different value was found.");
   }
 
   // Confirms that one bit was appended:
-  TEST_ASSERT_EQUAL(1, *_test_get_bit_index());
+  TEST_ASSERT_EQUAL_MESSAGE(1, *_test_get_bit_index(),
+    "Bit extraction failed: after two max-value buffers, bit_index should be 1 (got 0).");
 }
 
 void test_buffer_copy_alternating(void) {
@@ -141,11 +146,13 @@ void test_buffer_copy_alternating(void) {
   // Confirms adc_buffer_full_bit matches alternating pattern:
   for (size_t i = 0; i < buffer_size; i++) {
     uint16_t expected = (i % 2 == 0) ? 0 : UINT16_MAX;
-    TEST_ASSERT_EQUAL(expected, copy[i]);
+    TEST_ASSERT_EQUAL_MESSAGE(expected, copy[i],
+      "Alternating buffer copy failed: DMA samples should alternate 0/UINT16_MAX, but pattern mismatch found.");
   }
 
   // Confirms bit extraction still ran:
-  TEST_ASSERT_EQUAL(1, *_test_get_bit_index());
+  TEST_ASSERT_EQUAL_MESSAGE(1, *_test_get_bit_index(),
+    "Bit extraction failed: alternating buffer should still produce a bit, but bit_index stayed 0.");
 }
 
 void test_adc_window_counter_gating(void) {
@@ -159,7 +166,8 @@ void test_adc_window_counter_gating(void) {
   adc_buffer_full_interrupt();
 
   // Since adc_window_counter gating skipped processing, bit_index should stay 0:
-  TEST_ASSERT_EQUAL(0, *_test_get_bit_index());
+  TEST_ASSERT_EQUAL_MESSAGE(0, *_test_get_bit_index(),
+    "Window gating failed: with adc_window_counter misaligned, bit_index should remain 0 (got 1).");
 }
 
 void setup() {

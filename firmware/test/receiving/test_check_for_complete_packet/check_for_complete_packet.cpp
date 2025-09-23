@@ -48,7 +48,10 @@ void test_parses_message_when_valid_packet_present() {
   check_for_complete_packet();
 
   // Confirm that the message "Hi" was parsed and delivered
-  TEST_ASSERT_EQUAL_STRING("Hi", _test_get_delivered_message());
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    "Hi", _test_get_delivered_message(),
+    "Packet parse failed: with valid framing [01 02 ... 03 04], expected \"Hi\" to be delivered (got different/empty message)."
+  );
 }
 
 void test_ignores_packet_with_no_framing() {
@@ -73,7 +76,10 @@ void test_ignores_packet_with_no_framing() {
   check_for_complete_packet();
 
   // Confirm no message was parsed/delivered:
-  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    "", _test_get_delivered_message(),
+    "Framing guard failed: without [01 02] header and [03 04] footer, no message should be delivered (got non-empty)."
+  );
 }
 
 void test_truncates_message_that_exceeds_max_length() {
@@ -105,8 +111,14 @@ void test_truncates_message_that_exceeds_max_length() {
   check_for_complete_packet();
 
   const char* delivered = _test_get_delivered_message();
-  TEST_ASSERT_EQUAL_INT(MAX_TEXT_LENGTH - 1, strlen(delivered));
-  TEST_ASSERT_EQUAL_CHAR('A', delivered[0]);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(
+    MAX_TEXT_LENGTH - 1, strlen(delivered),
+    "Truncation failed: payload exceeding MAX_TEXT_LENGTH must be truncated to MAX_TEXT_LENGTH-1 chars (got different length)."
+  );
+  TEST_ASSERT_EQUAL_CHAR_MESSAGE(
+    'A', delivered[0],
+    "Truncation content failed: truncated payload should still begin with 'A'."
+  );
 }
 
 void test_does_not_check_for_complete_packet_with_only_start_header() {
@@ -122,7 +134,10 @@ void test_does_not_check_for_complete_packet_with_only_start_header() {
 
   check_for_complete_packet();
 
-  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    "", _test_get_delivered_message(),
+    "Partial framing guard failed: header-only [01 02] without footer must not produce a delivered message (got non-empty)."
+  );
 }
 
 void test_does_not_check_for_complete_packet_with_only_stop_footer() {
@@ -138,7 +153,10 @@ void test_does_not_check_for_complete_packet_with_only_stop_footer() {
 
   check_for_complete_packet();
 
-  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    "", _test_get_delivered_message(),
+    "Partial framing guard failed: footer-only [03 04] without header must not produce a delivered message (got non-empty)."
+  );
 }
 
 void test_ignores_noise_before_header() {
@@ -160,7 +178,10 @@ void test_ignores_noise_before_header() {
 
   check_for_complete_packet();
 
-  TEST_ASSERT_EQUAL_STRING("Hi", _test_get_delivered_message());
+   TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    "Hi", _test_get_delivered_message(),
+    "Noise rejection failed: pre-header noise should be ignored and payload \"Hi\" delivered once [01 02 ... 03 04] is found."
+  );
 }
 
 void setup() {
