@@ -23,7 +23,7 @@ ADC *adc = new ADC(); // adc object
 DMAChannel dma_ch1;
 
 const uint32_t adc_frequency = 81920;
-const uint32_t buffer_size = 10240;
+const uint32_t buffer_size = 410;
 DMAMEM static volatile uint16_t __attribute__((aligned(32))) dma_adc_buff1[buffer_size];
 uint16_t adc_buffer_copy[buffer_size];
 
@@ -34,7 +34,7 @@ goertzel_state gs[gs_len];
 // ------------------  Keyboard poller timer and state-------------------- //
 IntervalTimer keyboard_poller_timer;
 const int keyboard_poller_period_usec = 10000; // run at 100 Hz
-volatile uint64_t switch_state; 
+volatile uint64_t switch_state;
 uint32_t time_of_last_press_ms;
 
 const uint8_t SCAN_CHAIN_BIT_INDEX_TO_KB_INDEX[] = {
@@ -83,12 +83,15 @@ void adc_buffer_full_interrupt() {
   // process data
   if (print_ctr++ % 64 == 0) {
     for (size_t i = 0; i < buffer_size; i++) {
-      //Serial.printf("%d\n", adc_buffer_copy[i]);
+      Serial.printf("%d\n", adc_buffer_copy[i]);
+/*
       for (int j = 0; j < gs_len; j++) {
         goertzel_state * g = &gs[j];
         update_goertzel(g, adc_buffer_copy[i]);
       }
+*/
     }
+/*
     Serial.println();
     for (int j = 0; j < gs_len; j++) {
       goertzel_state * g = &gs[j];
@@ -97,6 +100,7 @@ void adc_buffer_full_interrupt() {
         j, g->w0/6.28 * adc_frequency, g->y_re, g->y_im, sqrt(pow(g->y_re, 2) + pow(g->y_im, 2)), adc_buffer_copy[j]);
       reset_goertzel(g);
     }
+*/
   }
 }
 
