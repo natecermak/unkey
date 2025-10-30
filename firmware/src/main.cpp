@@ -49,7 +49,7 @@ void loop() {
     Serial.println(curr_mag_2kHz + curr_mag_2_2kHz);
   }
 
-  poll_battery();
+  // poll_battery();
 }
 
 #endif
