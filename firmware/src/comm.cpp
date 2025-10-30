@@ -417,6 +417,8 @@ void get_bit_from_top_frequency() {
   uint8_t bit = (mag_2_2kHz > mag_2kHz) ? 1 : 0;
   if (bit_index < MAX_BITS) {
     bitstream[bit_index++] = bit;
+    Serial.print("bit: ");
+    Serial.println(bit);
   }
 }
 
