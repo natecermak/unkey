@@ -459,10 +459,12 @@ void get_bit_from_top_frequency() {
     }
     Serial.println(bit);
 
+    // Testing only--------------------------------------------------
     pinMode(1, OUTPUT);
     digitalWrite(1, HIGH);
     delay(1);
     digitalWrite(1, LOW);
+    // End testing---------------------------------------------------
   }
 }
 
