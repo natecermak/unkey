@@ -125,6 +125,33 @@ volatile bool mag_ready = false;
 // Functions
 // ------------------------------------------------------------------
 
+// Testing only------------------------------------------------------
+// Decide: 1, 0, or SILENCE based on Goertzel magnitudes
+enum Symbol { SYM_0, SYM_1, SYM_SILENCE };
+
+static inline Symbol decide_symbol(float P0, float P1) {
+  // 1) Energy gate (silence)
+  const float E = P0 + P1;                // total energy in this window
+  static float noise_ema = 0.0f;
+  if (noise_ema == 0.0f) noise_ema = E;   // init
+  // track floor only when low energy so strong tones don't raise it
+  if (E < noise_ema * 1.5f) noise_ema = 0.95f*noise_ema + 0.05f*E;
+
+  const float ABS_FLOOR = 0.1f;   // was 200.0f
+  const float THRESH    = fmaxf(ABS_FLOOR, noise_ema * 3.0f);
+  if (E < THRESH) return SYM_SILENCE;
+
+  // 2) Dominance gate (avoid random argmax in noise)
+  const float maxmag = (P1 > P0) ? P1 : P0;
+  const float minmag = (P1 > P0) ? P0 : P1;
+  const float MIN_DOM_RATIO = 0.3f;  // was 1.6f
+  if (maxmag < MIN_DOM_RATIO * minmag) return SYM_SILENCE;
+
+  // 3) Decide bit
+  return (P1 > P0) ? SYM_1 : SYM_0;
+}
+// End testing only--------------------------------------------------
+
 static inline void update_magnitudes_to_plot(float mag_2_kHz, float mag_2_2_kHz) {
   curr_mag_2kHz = mag_2_kHz;
   curr_mag_2_2kHz = mag_2_2_kHz;
@@ -164,8 +191,8 @@ static inline void transmit_bit(uint8_t bit, const tx_parameters_t* tx_parameter
 
   // Generates a sine wave for the current bit:
   while ((curr_bit_elapsed_useconds = micros() - bit_start_time) < tx_parameters->usec_per_bit) {
-    // The DAC sample value (integer 0–409) computed from the sine at that instant - what we actually write to the DAC:
-    const uint16_t dac_sample_value = (uint16_t)(((sinf(w * curr_bit_elapsed_useconds) + 1.0f) * 0.5f) * 409);
+    // The DAC sample value (integer 0–4095) computed from the sine at that instant - what we actually write to the DAC:
+    const uint16_t dac_sample_value = (uint16_t)(((sinf(w * curr_bit_elapsed_useconds) + 1.0f) * 0.5f) * 4095);
 
     // Do not want an interrupt to run mid-sample, so:
     noInterrupts();
@@ -194,7 +221,6 @@ static inline void transmit_preamble(const tx_parameters_t* tx_parameters) {
  * FSK transmitter: for each char, emit its 8 bits MSB‑first as tones.
  * Uses freq_low for 0 and freq_high for 1; each bit lasts usec_per_bit microseconds.
  * The sine is generated with w = 2πf and time in microseconds, so f is in Hz and time is µs.
- * Note: the current scaling multiplies by 409 (≈10‑bit). For a 12‑bit DAC, use 4095.
  */
 void transmit_message(const char* message_to_transmit, const tx_parameters_t* tx_parameters) {
   transmit_preamble(tx_parameters);
@@ -216,7 +242,7 @@ void transmit_message(const char* message_to_transmit, const tx_parameters_t* tx
       // Generates a sine wave for the current bit for usec_per_bit microseconds:
       while ((time_usec = micros() - bit_start) < tx_parameters->usec_per_bit) {
         // Gets the phase angle at curr time in microsec and scales for 12 bit DAC:
-        dac_value = (uint16_t)(((sin(w * time_usec) + 1.0) / 2.0) * 409);
+        dac_value = (uint16_t)(((sin(w * time_usec) + 1.0) / 2.0) * 4095);
         noInterrupts();
         write_to_dac(0, dac_value);
         interrupts();
@@ -413,12 +439,30 @@ void get_bit_from_top_frequency() {
     }
   }
 
+  // Testing only----------------------------------------------------
   // Decide this window’s bit (1 if 2.2 kHz stronger, else 0) and append if there’s space:
+  // Symbol s = decide_symbol(mag_2kHz, mag_2_2kHz);
+  // if (s == SYM_SILENCE) {
+  //   Serial.println("S==================");    // log silence explicitly
+  //   return;                 // do not append a bit during gaps
+  // }
+  // uint8_t bit = (s == SYM_1) ? 1 : 0;
+  // End testing-----------------------------------------------------
+
   uint8_t bit = (mag_2_2kHz > mag_2kHz) ? 1 : 0;
   if (bit_index < MAX_BITS) {
     bitstream[bit_index++] = bit;
-    Serial.print("bit: ");
+    if (bit == 0) {
+      Serial.print("bit 0: ");
+    } else {
+      Serial.print("bit 1: ");
+    }
     Serial.println(bit);
+
+    pinMode(1, OUTPUT);
+    digitalWrite(1, HIGH);
+    delay(1);
+    digitalWrite(1, LOW);
   }
 }
 

@@ -44,10 +44,10 @@ void setup() {
 
 void loop() {
   // Runs once per bit analysis window (so every 5 ms, when get_bit_from_top_frequency() updates the magnitudes):
-  // if (mag_ready) {
-  //   mag_ready = false;  // Clears the flag so we only print once
-  //   Serial.println(curr_mag_2kHz + curr_mag_2_2kHz);
-  // }
+  if (mag_ready) {
+    mag_ready = false;  // Clears the flag so we only print once
+   // Serial.println(curr_mag_2kHz + curr_mag_2_2kHz);
+  }
 
   // poll_battery();
 }
