@@ -24,6 +24,16 @@
 static void (*deliver_fn_override)(const char*) = nullptr;
 #endif
 
+// For debugging only:
+inline void pulse_begin() { digitalWriteFast(1, HIGH); }
+inline void pulse_end()   { digitalWriteFast(1, LOW); }
+
+// Temp changes to log sampling rate:
+// start changes---------------------------------------------------
+volatile uint32_t buffer_count = 0;
+uint32_t start_time_us = 0;
+// end changes-----------------------------------------------------
+
 // ------------------------------------------------------------------
 // State
 // ------------------------------------------------------------------
@@ -439,16 +449,6 @@ void get_bit_from_top_frequency() {
     }
   }
 
-  // Testing only----------------------------------------------------
-  // Decide this window’s bit (1 if 2.2 kHz stronger, else 0) and append if there’s space:
-  // Symbol s = decide_symbol(mag_2kHz, mag_2_2kHz);
-  // if (s == SYM_SILENCE) {
-  //   Serial.println("S==================");    // log silence explicitly
-  //   return;                 // do not append a bit during gaps
-  // }
-  // uint8_t bit = (s == SYM_1) ? 1 : 0;
-  // End testing-----------------------------------------------------
-
   uint8_t bit = (mag_2_2kHz > mag_2kHz) ? 1 : 0;
   if (bit_index < MAX_BITS) {
     bitstream[bit_index++] = bit;
@@ -459,12 +459,6 @@ void get_bit_from_top_frequency() {
     }
     Serial.println(bit);
 
-    // Testing only--------------------------------------------------
-    pinMode(1, OUTPUT);
-    digitalWrite(1, HIGH);
-    delay(1);
-    digitalWrite(1, LOW);
-    // End testing---------------------------------------------------
   }
 }
 
@@ -580,11 +574,25 @@ void decode_single_bit_from_adc_window(const uint16_t* samples, size_t size) {
  * passes the fresh samples to the decoder, then re-enables DMA.
  * DMA writes to RAM2 -> decode_single_bit_from_adc_window reads from RAM2.
  * Each ADC buffer ≈ 5 ms (410 samples @ 81.92 kHz). If SCAN_CHAIN_LENGTH == 2 and TX bit period is ~10 ms,
- * two buffers correspond to one bit period.
+ * two buffers correspond to one bit period, and adc_buffer_full_interrupt() fires every 5 ms.
  */
 void adc_buffer_full_interrupt() {
+  pulse_begin();
+
   // Clears the DMA interrupt flag so it's ready for the next transfer:
   dma_ch1.clearInterrupt();
+
+  // Temp changes to log sampling rate:
+  // start changes---------------------------------------------------
+  buffer_count++;
+  // end changes-----------------------------------------------------
+
+  // Temp changes to log how many samples in buffer:
+  // start changes---------------------------------------------------
+  // static uint32_t total_samples = 0;
+  // total_samples += buffer_size;  // how many samples DMA says it just finished
+  // Serial.printf("DMA complete: total_samples=%lu\n", total_samples); // should increase by +410 each time
+  // end changes-----------------------------------------------------
 
   // Invalidates CPU cache for adc_buffer_curr_half to ensure CPU sees the latest data written by DMA (RAM2 is cacheable):
   arm_dcache_delete((void *)adc_buffer_curr_half, sizeof(adc_buffer_curr_half));
@@ -594,6 +602,8 @@ void adc_buffer_full_interrupt() {
 
   // Re-enables the DMA channel for next read:
   dma_ch1.enable();
+
+  pulse_end();
 }
 
 /**
@@ -601,6 +611,10 @@ void adc_buffer_full_interrupt() {
  * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to buffer.
  */
 void setup_receiver() {
+  // For pulse_begin() / pulse_end():
+  pinMode(1, OUTPUT);
+  digitalWriteFast(1, LOW);
+
   // Sets readPin_adc_0_pin as the input pin for ADC sampling:
   pinMode(readPin_adc_0_pin, INPUT);
 
@@ -624,8 +638,8 @@ void setup_receiver() {
   dma_ch1.source((volatile uint16_t &)(ADC1_R0));
   #pragma GCC diagnostic pop
 
-  // destinationBuffer takes a sample count here (not bytes). The library handles element width internally:
-  dma_ch1.destinationBuffer((uint16_t *)adc_buffer_curr_half, buffer_size);
+  // destinationBuffer takes a byte count here (not samples). The library handles element width internally:
+  dma_ch1.destinationBuffer((uint16_t *)adc_buffer_curr_half, sizeof(adc_buffer_curr_half));
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
 

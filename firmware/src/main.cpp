@@ -16,6 +16,11 @@
 
 #ifndef UNIT_TEST
 
+// Temp changes to log sampling rate:
+// start changes---------------------------------------------------
+extern volatile uint32_t buffer_count;
+// end changes-----------------------------------------------------
+
 void setup() {
   Serial.begin(9600);
   // Checks if connection is working and waits up to 5 sec for it to happen:
@@ -44,10 +49,23 @@ void setup() {
 
 void loop() {
   // Runs once per bit analysis window (so every 5 ms, when get_bit_from_top_frequency() updates the magnitudes):
-  if (mag_ready) {
-    mag_ready = false;  // Clears the flag so we only print once
-   // Serial.println(curr_mag_2kHz + curr_mag_2_2kHz);
+  // if (mag_ready) {
+  //   mag_ready = false;  // Clears the flag so we only print once
+  //   Serial.println(curr_mag_2kHz + curr_mag_2_2kHz);
+  // }
+
+  // Temp changes to log sampling rate:
+  // start changes---------------------------------------------------
+  static uint32_t start_time_us = 0;
+  if (start_time_us == 0) start_time_us = micros();
+  if (micros() - start_time_us >= 1000000) {  // 1 second
+    uint32_t count = buffer_count;
+    buffer_count = 0;
+    start_time_us = micros();
+    Serial.printf("Actual sample rate ≈ %lu samples/sec\n", count * 410);
+
   }
+  // end changes-----------------------------------------------------
 
   // poll_battery();
 }
