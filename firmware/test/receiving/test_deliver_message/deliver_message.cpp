@@ -25,32 +25,50 @@ void test_deliver_message(void) {
 
   // Asserts that display_chat_history - which touches hardware - only gets called once from deliver_message, as expected.
   // (An example of using mock verification to test a side effect behavior)
-  TEST_ASSERT_EQUAL(1, display_called);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    1, display_called,
+    "Display side effect failed: display_chat_history should be called exactly once for a valid message."
+  );
 
   // Ensure one message was added
   ChatBufferState* state = get_chat_buffer_state();
-  TEST_ASSERT_EQUAL(1, state->chat_history_message_count);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    1, state->chat_history_message_count,
+    "Chat buffer update failed: valid message should increment chat_history_message_count to 1."
+  );
 
   // Gets the most recent message (or the one at write index - 1, adjusting for wraparound):
   int idx = (state->message_buffer_write_index + MAX_CHAT_MESSAGES - 1) % MAX_CHAT_MESSAGES;
   message_t* msg = &state->chat_history[idx];
 
-  TEST_ASSERT_EQUAL_STRING("Hello, world!", msg->text);
-
-  // Checks sender/recipient:
-  TEST_ASSERT_EQUAL_STRING(RECIPIENT_VOID, msg->sender);
-  TEST_ASSERT_EQUAL_STRING(RECIPIENT_UNKEY, msg->recipient);
-
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    "Hello, world!", msg->text,
+    "Message text storage failed: expected \"Hello, world!\" in chat history."
+  );
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    RECIPIENT_VOID, msg->sender,
+    "Sender assignment failed: expected RECIPIENT_VOID."
+  );
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    RECIPIENT_UNKEY, msg->recipient,
+    "Recipient assignment failed: expected RECIPIENT_UNKEY."
+  );
 }
 
 void test_rejects_empty_message() {
   deliver_message("");
 
   // Should not trigger display:
-  TEST_ASSERT_EQUAL(0, display_called);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    0, display_called,
+    "Empty message guard failed: display_chat_history should not be called for empty input."
+  );
 
   ChatBufferState* state = get_chat_buffer_state();
-  TEST_ASSERT_EQUAL(0, state->chat_history_message_count);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    0, state->chat_history_message_count,
+    "Empty message guard failed: chat_history_message_count should remain 0."
+  );
 }
 
 void test_rejects_too_long_message() {
@@ -60,29 +78,47 @@ void test_rejects_too_long_message() {
 
   deliver_message(long_msg);
 
-  TEST_ASSERT_EQUAL(0, display_called);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    0, display_called,
+    "Length guard failed: display_chat_history should not be called for overly long message."
+  );
 
   ChatBufferState* state = get_chat_buffer_state();
-  TEST_ASSERT_EQUAL(0, state->chat_history_message_count);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    0, state->chat_history_message_count,
+    "Length guard failed: chat_history_message_count should remain 0 for overly long message."
+  );
 }
 
 void test_rejects_message_with_framing_bytes() {
   deliver_message("test\x01message");
 
-  TEST_ASSERT_EQUAL(0, display_called);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    0, display_called,
+    "Framing guard failed: message containing protocol framing byte should not trigger display update."
+  );
 
   ChatBufferState* state = get_chat_buffer_state();
-  TEST_ASSERT_EQUAL(0, state->chat_history_message_count);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    0, state->chat_history_message_count,
+    "Framing guard failed: message containing protocol framing byte should not be added to chat history."
+  );
 }
 
 void test_strips_escape_characters() {
   deliver_message("hi\rthe\tre");
 
   ChatBufferState* state = get_chat_buffer_state();
-  TEST_ASSERT_EQUAL(1, state->chat_history_message_count);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    1, state->chat_history_message_count,
+    "Escape char handling failed: valid message with escapes should still increment message count."
+  );
 
   int idx = (state->message_buffer_write_index + MAX_CHAT_MESSAGES - 1) % MAX_CHAT_MESSAGES;
-  TEST_ASSERT_EQUAL_STRING("hithere", state->chat_history[idx].text);
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    "hithere", state->chat_history[idx].text,
+    "Escape char handling failed: message should be stored without '\\r' and '\\t'."
+  );
 }
 
 void test_multiple_valid_messages_displays_all() {
@@ -92,12 +128,18 @@ void test_multiple_valid_messages_displays_all() {
   ChatBufferState* state = get_chat_buffer_state();
 
   // Verifies that two messages were added to the chat buffer:
-  TEST_ASSERT_EQUAL(2, state->chat_history_message_count);
+  TEST_ASSERT_EQUAL_MESSAGE(
+    2, state->chat_history_message_count,
+    "Multiple messages failed: chat_history_message_count should equal number of valid delivered messages."
+  );
 
   int latest_message_index = (state->message_buffer_write_index + MAX_CHAT_MESSAGES - 1) % MAX_CHAT_MESSAGES;
 
   // Confirm that the latest message ("two") was stored correctly:
-  TEST_ASSERT_EQUAL_STRING("two", state->chat_history[latest_message_index].text);
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(
+    "two", state->chat_history[latest_message_index].text,
+    "Multiple messages failed: latest message should be \"two\"."
+  );
 }
 
 void setup() {

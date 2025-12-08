@@ -17,7 +17,6 @@
 #ifndef UNIT_TEST
 
 void setup() {
-  // Initializes serial communication with Teensy at baud rate of 9600 bps:
   Serial.begin(9600);
   // Checks if connection is working and waits up to 5 sec for it to happen:
   while (!Serial && millis() < 5000) ;
@@ -44,7 +43,11 @@ void setup() {
 }
 
 void loop() {
-  // uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3);
+  // Runs once per bit analysis window (so every 5 ms, when get_bit_from_top_frequency() updates the magnitudes):
+  if (mag_ready) {
+    mag_ready = false;  // Clears the flag so we only print once
+    Serial.println(curr_mag_2kHz + curr_mag_2_2kHz);
+  }
 
   poll_battery();
 }

@@ -29,7 +29,10 @@ void test_packetize_message(void) {
   uint8_t expected[] = {
     0x01, 0x02, 'b', 'a', 'b', 'k', 'a', 0x03, 0x04, '\0'
   };
-  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, TRANSMIT_BUFFER_TO_TEST, sizeof(expected));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY_MESSAGE(
+    expected, TRANSMIT_BUFFER_TO_TEST, sizeof(expected),
+    "Packetization failed: transmit buffer should obvi contain header [01 02], message 'babka', and footer [03 04]."
+  );
 }
 
 void setup() {

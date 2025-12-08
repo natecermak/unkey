@@ -9,6 +9,23 @@
 
 #include "comm.h"
 
+static void prime_phase_with_alternating_bins() {
+  goertzel_state* gs = _test_get_goertzel_state();
+  // Alternate 2.0 kHz strong (bin 0) and 2.2 kHz strong (bin 1)
+  for (int i = 0; i < 7; ++i) {
+    if ((i % 2) == 0) { // even -> bin0 stronger
+      gs[0].y_re = 120.0f; gs[0].y_im = 0.0f;
+      gs[1].y_re =   2.0f; gs[1].y_im = 0.0f;
+    } else {            // odd -> bin1 stronger
+      gs[0].y_re =   2.0f; gs[0].y_im = 0.0f;
+      gs[1].y_re = 120.0f; gs[1].y_im = 0.0f;
+    }
+    get_bit_from_top_frequency(); // records window history; won’t append yet
+  }
+  // Reset bit index in case any previous state existed
+  *_test_get_bit_index() = 0;
+}
+
 void setUp(void) {
   *_test_get_bit_index() = 0;
 }
@@ -24,7 +41,10 @@ void test_get_bit_from_top_frequency_sets_bit_to_0_when_mag0_is_stronger(void) {
 
   get_bit_from_top_frequency();
 
-  TEST_ASSERT_EQUAL_UINT8(0, _test_get_bitstream()[0]);
+   TEST_ASSERT_EQUAL_UINT8_MESSAGE(
+    0, _test_get_bitstream()[0],
+    "Dominant 2.0 kHz (bin0) should yield bit 0 (not 1)."
+  );
 }
 
 void test_get_bit_from_top_frequency_does_not_overflow_buffer(void) {
@@ -36,10 +56,15 @@ void test_get_bit_from_top_frequency_does_not_overflow_buffer(void) {
   get_bit_from_top_frequency();
 
   // Checks that index didn't change:
-  TEST_ASSERT_EQUAL(MAX_BITS, *_test_get_bit_index());
+  TEST_ASSERT_EQUAL_MESSAGE(
+    MAX_BITS, *_test_get_bit_index(),
+    "Buffer full: bit_index must not change when at capacity (no append)."
+  );
 }
 
 void test_get_bit_from_top_frequency_appends_correct_bit(void) {
+  prime_phase_with_alternating_bins();
+
   // Returns a pointer to the internal array of goertzel_state structs:
   goertzel_state* gs = _test_get_goertzel_state();
 
@@ -51,7 +76,10 @@ void test_get_bit_from_top_frequency_appends_correct_bit(void) {
 
   get_bit_from_top_frequency();
 
-  TEST_ASSERT_EQUAL_UINT8(0x1, _test_get_bitstream()[0]);
+  TEST_ASSERT_EQUAL_UINT8_MESSAGE(
+    0x1, _test_get_bitstream()[0],
+    "Dominant 2.2 kHz (bin1) should yield bit 1 (not 0)."
+  );
 }
 
 
