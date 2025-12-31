@@ -148,7 +148,6 @@ void poll_keyboard(ChatBufferState* state) {
           char key = KEYBOARD_LAYOUT[key_index];
           tx_display_buffer[tx_display_buffer_length] = key;
           tx_display_buffer_length++;
-          // Serial.printf("Read buffer %ul\n", ~read_buffer);
           Serial.printf("You pressed key_index=%d, key=\'%c\'\n", key_index, key);
           redraw_typing_box();
           // modifier = 0; // reset modifier keys

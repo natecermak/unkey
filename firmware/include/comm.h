@@ -22,6 +22,8 @@ void setup_receiver();
 
 void setup_transmitter();
 
+void process_rx_windows();
+
 // ------------------------------------------------------------------
 // Testing Accessors
 // ------------------------------------------------------------------

@@ -16,17 +16,12 @@
 
 #ifndef UNIT_TEST
 
-// Temp changes to log sampling rate:
-// start changes---------------------------------------------------
-extern volatile uint32_t buffer_count;
-// end changes-----------------------------------------------------
-
 void setup() {
   Serial.begin(9600);
+
   // Checks if connection is working and waits up to 5 sec for it to happen:
   while (!Serial && millis() < 5000) ;
   delay(100);
-  Serial.println("============================\nStarting setup()");
 
   // SPI commuincation bus for keyboard/display etc:
   SPI.begin();
@@ -35,37 +30,18 @@ void setup() {
   // Specifies 12-bit resolution:
   analogReadResolution(12);
 
-  // Testing purposes only:
-  test_incoming_message.begin(incoming_message_callback, 1000000);
+  // Testing purposes only (disabled while testing receiving logic):
+  // test_incoming_message.begin(incoming_message_callback, 1000000);
 
   // Module setup:
   setup_screen();
   setup_receiver();
   setup_transmitter();
   setup_keyboard_poller();
-
-  Serial.println("setup() complete\n============================");
 }
 
 void loop() {
-  // Runs once per bit analysis window (so every 5 ms, when get_bit_from_top_frequency() updates the magnitudes):
-  // if (mag_ready) {
-  //   mag_ready = false;  // Clears the flag so we only print once
-  //   Serial.println(curr_mag_2kHz + curr_mag_2_2kHz);
-  // }
-
-  // Temp changes to log sampling rate:
-  // start changes---------------------------------------------------
-  static uint32_t start_time_us = 0;
-  if (start_time_us == 0) start_time_us = micros();
-  if (micros() - start_time_us >= 1000000) {  // 1 second
-    uint32_t count = buffer_count;
-    buffer_count = 0;
-    start_time_us = micros();
-    Serial.printf("Actual sample rate ≈ %lu samples/sec\n", count * 410);
-
-  }
-  // end changes-----------------------------------------------------
+  process_rx_windows();
 
   // poll_battery();
 }
