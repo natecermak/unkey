@@ -8,6 +8,11 @@
 #include <time.h>
 
 //----------------------------------------
+// Screen Behavior Configuration
+//----------------------------------------
+#define SCREEN_TIMEOUT_MS 20000
+
+//----------------------------------------
 // Chat Display Configuration
 //----------------------------------------
 #define CHAT_BOX_LINE_PADDING       11      // Extra vertical space between chat lines
