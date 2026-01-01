@@ -570,9 +570,6 @@ void adc_buffer_full_interrupt() {
   // Invalidates CPU cache for adc_buffer_curr_half to ensure CPU sees the latest data written by DMA (RAM2 is cacheable):
   arm_dcache_delete((void *)adc_buffer_curr_half, sizeof(adc_buffer_curr_half));
 
-  // Uses Goertzel algorithm to analyze the frequency content of a full buffer of ADC samples:
-  // decode_single_bit_from_adc_window((const uint16_t*)adc_buffer_curr_half, buffer_size);
-
   // copy 1 window into RAM1 queue (fast) instead of calling decode_single_bit_from_adc_window
   if (rx_queue_count < 2) {
     memcpy(rx_win_q[rx_queue_write_index],
