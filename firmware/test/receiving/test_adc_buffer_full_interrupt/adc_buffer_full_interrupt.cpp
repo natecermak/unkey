@@ -1,8 +1,9 @@
 // ==================================================================
 // adc_buffer_full_interrupt.cpp
 // Input: Filled ADC DMA buffer with sampled data
-// Output: Copies data for processing, triggers frequency analysis and bit extraction
-// Run just this test with $ pio test -e teensy40_test -f "receiving/test_adc_buffer_full_interrupt"
+// Output: ISR queues windows; process_rx_windows() drains queue and appends bits to window_stream
+// Run just this test with:
+//   pio test -e teensy40_test -f "receiving/test_adc_buffer_full_interrupt"
 // ==================================================================
 #include <Arduino.h>
 #include <unity.h>
@@ -10,39 +11,40 @@
 #include "comm.h"
 #include "goertzel.h"
 
-static void prime_alignment_with_alternating_windows() {
+static void fill_dma_with_sine(float frequency_hz) {
   const float sr = 81920.0f, amp = 2047.0f, off = 2048.0f;
   volatile uint16_t* buf = _test_get_adc_buffer_curr_half();
-  for (int w = 0; w < 7; ++w) {                 // need 7 recent windows
-    float f = (w % 2 == 0) ? 2000.0f : 2200.0f; // 0,1,0,1,... for lock
-    for (uint32_t i = 0; i < buffer_size; ++i) {
-      float t = (float)i / sr;
-      buf[i] = (uint16_t)(off + amp * sinf(2.0f * PI * f * t));
-    }
-    arm_dcache_flush((void*)buf, sizeof(uint16_t) * buffer_size);
-    adc_buffer_full_interrupt();
+
+  for (uint32_t i = 0; i < buffer_size; ++i) {
+    float t = (float)i / sr;
+    buf[i] = (uint16_t)(off + amp * sinf(2.0f * PI * frequency_hz * t));
   }
+
+  // RAM2 is cacheable; ensure CPU writes hit OCRAM before ISR reads it
+  arm_dcache_flush((void*)buf, sizeof(uint16_t) * buffer_size);
 }
 
-// Helper to fill DMA buffer:
-void fill_dma_buffer(uint16_t value, bool alternate_values = false) {
-  volatile uint16_t* dma_buf = _test_get_adc_buffer_curr_half();
-  for (size_t i = 0; i < buffer_size; i++) {
-    dma_buf[i] = alternate_values ? ((i % 2 == 0) ? 0 : value) : value;
+static void fill_dma_constant(uint16_t value) {
+  volatile uint16_t* buf = _test_get_adc_buffer_curr_half();
+  for (uint32_t i = 0; i < buffer_size; ++i) buf[i] = value;
+  arm_dcache_flush((void*)buf, sizeof(uint16_t) * buffer_size);
+}
+
+// Prime the receiver alignment by feeding alternating windows.
+// IMPORTANT: after each ISR call, drain via process_rx_windows() so the 2-window queue doesn't overrun.
+static void prime_alignment_with_alternating_windows() {
+  for (int w = 0; w < 7; ++w) { // needs 7 recent windows for boundary detection
+    float f = (w % 2 == 0) ? 2000.0f : 2200.0f;
+    fill_dma_with_sine(f);
+    adc_buffer_full_interrupt();
+    process_rx_windows();
   }
-  // Flushes CPU cache for adc_buffer_curr_half to ensure all written values are committed to RAM2.
-  // Without this, cached writes may not be visible to DMA or other code that reads from RAM:
-  arm_dcache_flush((void*)dma_buf, sizeof(uint16_t) * buffer_size);
 }
 
 void setUp(void) {
-  fill_dma_buffer(0);
-
-  // Resets bit index:
-  *_test_get_bit_index() = 0;
-
-  // Resets adc_window_counter so decode will actually run:
+  // Reset counters/streams used by tests
   *_test_get_adc_window_counter() = 0;
+  *_test_get_window_index() = 0;
 
   // Initialize Goertzel states so magnitude math is valid in tests
   goertzel_state* gs = _test_get_goertzel_state();
@@ -52,114 +54,55 @@ void setUp(void) {
 
 void tearDown(void) {}
 
-void test_bit_extraction_triggered(void) {
+void test_isr_queues_and_process_drains_one_window_into_window_stream(void) {
   prime_alignment_with_alternating_windows();
 
-  // Fills both halves with a strong sine wave:
-  float frequency = 2200.0f;
-  float sampling_rate = 81920.0f;
-  float amplitude = 2047.0f;
-  float offset = 2048.0f;
+  // Keep alignment state, but start the stream fresh for this assertion:
+  *_test_get_window_index() = 0;
 
-  volatile uint16_t* curr_half = _test_get_adc_buffer_curr_half();
-
-  for (uint32_t i = 0; i < buffer_size; i++) {
-    float t = (float)i / sampling_rate;
-    float sine = sinf(2.0f * PI * frequency * t);
-    curr_half[i] = (uint16_t)(offset + amplitude * sine);
-  }
-  arm_dcache_flush((void*)curr_half, sizeof(uint16_t) * buffer_size);
+  // Queue one strong "1" window (2200 Hz), then drain:
+  fill_dma_with_sine(2200.0f);
   adc_buffer_full_interrupt();
+  process_rx_windows();
 
-  // Fills curr_half again to simulate new DMA buffer:
-  for (uint32_t i = 0; i < buffer_size; i++) {
-    float t = (float)i / sampling_rate;
-    float sine = sinf(2.0f * PI * frequency * t);
-    curr_half[i] = (uint16_t)(offset + amplitude * sine);
-  }
-  // Flushes CPU cache after manually updating adc_buffer_curr_half again.
-  // Required because RAM2 is cacheable — without this, adc_buffer_full_interrupt()
-  // might read stale data from RAM instead of the updated values:
-  arm_dcache_flush((void*)curr_half, sizeof(uint16_t) * buffer_size);
+  int idx = *_test_get_window_index();
+  TEST_ASSERT_GREATER_OR_EQUAL_INT(1, idx);
 
-  adc_buffer_full_interrupt();
-
-  TEST_ASSERT_EQUAL(1, *_test_get_bit_index());
+  uint8_t* stream = _test_get_window_stream();
+  TEST_ASSERT_EQUAL_UINT8(1, stream[idx - 1]);
 }
 
-void test_adc_buffer_with_silence_does_not_append_bit(void) {
-  fill_dma_buffer(0);
-
-  // Disarm any prior state (feed several weak windows to clear history)
-  for (int i = 0; i < 6; ++i) {  // 6 is enough regardless of scan length
-    adc_buffer_full_interrupt();
-  }
-  // Now start fresh for this assertion
-  *_test_get_bit_index() = 0;
-  *_test_get_adc_window_counter() = 0;
-
-  adc_buffer_full_interrupt();
-  adc_buffer_full_interrupt();
-
-  uint16_t* copy = (uint16_t*)_test_get_adc_buffer_curr_half();
-  for (size_t i = 0; i < buffer_size; i++) {
-    TEST_ASSERT_EQUAL(0, copy[i]);
-  }
-
-  int idx = *_test_get_bit_index();
-  uint8_t* bits = _test_get_bitstream();
-
-  // Silence may append zero-bits; it must not produce any '1's.
-  for (int i = 0; i < idx; ++i) {
-    TEST_ASSERT_EQUAL(0, bits[i]);
-  }
-}
-
-void test_buffer_copy_max_values(void) {
+void test_isr_can_queue_two_windows_before_drain_and_produces_two_stream_entries(void) {
   prime_alignment_with_alternating_windows();
-  uint16_t* copy = (uint16_t*)_test_get_adc_buffer_curr_half();
-  fill_dma_buffer(UINT16_MAX);
-  adc_buffer_full_interrupt();
+  *_test_get_window_index() = 0;
+
+  // Queue two windows (queue depth is 2), drain once
+  fill_dma_with_sine(2200.0f);
   adc_buffer_full_interrupt();
 
-  // Confirms adc_buffer_full_bit	matches max pattern:
-  for (size_t i = 0; i < buffer_size; i++) {
-    TEST_ASSERT_EQUAL(UINT16_MAX, copy[i]);
-  }
+  fill_dma_with_sine(2200.0f);
+  adc_buffer_full_interrupt();
 
-  // Confirms that one bit was appended:
-  TEST_ASSERT_EQUAL(1, *_test_get_bit_index());
+  process_rx_windows();
+
+  int idx = *_test_get_window_index();
+  TEST_ASSERT_EQUAL_INT(2, idx);
+
+  uint8_t* stream = _test_get_window_stream();
+  TEST_ASSERT_EQUAL_UINT8(1, stream[0]);
+  TEST_ASSERT_EQUAL_UINT8(1, stream[1]);
 }
 
-void test_buffer_copy_alternating(void) {
+void test_silence_window_does_not_append_to_window_stream(void) {
   prime_alignment_with_alternating_windows();
-  uint16_t* copy = (uint16_t*)_test_get_adc_buffer_curr_half();
-  fill_dma_buffer(UINT16_MAX, true);
+  *_test_get_window_index() = 0;
+
+  // Pure silence → both mags should be under the gate → no append
+  fill_dma_constant(0);
   adc_buffer_full_interrupt();
-  adc_buffer_full_interrupt();
+  process_rx_windows();
 
-  // Confirms adc_buffer_full_bit matches alternating pattern:
-  for (size_t i = 0; i < buffer_size; i++) {
-    uint16_t expected = (i % 2 == 0) ? 0 : UINT16_MAX;
-    TEST_ASSERT_EQUAL(expected, copy[i]);
-  }
-
-  // Confirms bit extraction still ran:
-  TEST_ASSERT_EQUAL(1, *_test_get_bit_index());
-}
-
-void test_adc_window_counter_gating(void) {
-  // Sets adc_window_counter so that % SCAN_CHAIN_LENGTH != 0
-  *_test_get_adc_window_counter() = 1;  // Any nonzero value that fails the mod check
-
-  // Resets bit index:
-  *_test_get_bit_index() = 0;
-
-  adc_buffer_full_interrupt();
-  adc_buffer_full_interrupt();
-
-  // Since adc_window_counter gating skipped processing, bit_index should stay 0:
-  TEST_ASSERT_EQUAL(0, *_test_get_bit_index());
+  TEST_ASSERT_EQUAL_INT(0, *_test_get_window_index());
 }
 
 void setup() {
@@ -167,11 +110,9 @@ void setup() {
   while (!Serial && millis() < 5000);
 
   UNITY_BEGIN();
-  RUN_TEST(test_bit_extraction_triggered);
-  RUN_TEST(test_adc_buffer_with_silence_does_not_append_bit);
-  RUN_TEST(test_buffer_copy_max_values);
-  RUN_TEST(test_buffer_copy_alternating);
-  RUN_TEST(test_adc_window_counter_gating);
+  RUN_TEST(test_isr_queues_and_process_drains_one_window_into_window_stream);
+  RUN_TEST(test_isr_can_queue_two_windows_before_drain_and_produces_two_stream_entries);
+  RUN_TEST(test_silence_window_does_not_append_to_window_stream);
   UNITY_END();
 }
 

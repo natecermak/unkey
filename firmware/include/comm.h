@@ -33,18 +33,18 @@ void process_rx_windows();
 #include "goertzel.h"
 
 // Declares a function that returns a pointer to the internal bitstream[] array, which is static in comm.cpp:
-uint8_t* _test_get_bitstream();
+uint8_t* _test_get_window_stream();
 
 // Declares a function that returns a pointer to the internal bit_index variable
-int* _test_get_bit_index();
+int* _test_get_window_index();
+
+// Declares a function that returns a pointer to the internal gs[] array, which holds the Goertzel filter states (used to determine bit values):
+goertzel_state* _test_get_goertzel_state();
 
 char* _test_get_delivered_message();
 
 // Used by tests to verify what message was "delivered" without calling any hardware-dependent code:
 void _test_set_deliver_fn(void (*fn)(const char*));
-
-// Declares a function that returns a pointer to the internal gs[] array, which holds the Goertzel filter states (used to determine bit values):
-goertzel_state* _test_get_goertzel_state();
 
 // Exposes a pointer to adc_window_counter so tests can modify/reset it:
 uint8_t* _test_get_adc_window_counter();
