@@ -1,6 +1,6 @@
 // ==================================================================
 // main.cpp
-// Entry point: initializes all modules and runs main event loop
+// Arduino entry point: initializes modules in setup() and runs loop()
 // ==================================================================
 #include <SPI.h>
 #include <Wire.h>
@@ -19,21 +19,21 @@
 void setup() {
   Serial.begin(9600);
 
-  // Checks if connection is working and waits up to 5 sec for it to happen:
+  // Waits up to 5s for the Serial connection (USB) to become available
   while (!Serial && millis() < 5000) ;
   delay(100);
 
-  // SPI commuincation bus for keyboard/display etc:
+  // SPI bus init (keyboard/display/etc.)
   SPI.begin();
-  // I2C communication bus for charge amplifier:
+  // I2C bus init (charge amplifier)
   Wire.begin();
-  // Specifies 12-bit resolution:
+  // Sets ADC read resolution to 12-bit
   analogReadResolution(12);
 
-  // Testing purposes only (disabled while testing receiving logic):
+  // Testing only: timer-driven simulated incoming messages (currently disabled)
   // test_incoming_message.begin(incoming_message_callback, 1000000);
 
-  // Module setup:
+  // Module init
   setup_screen();
   setup_receiver();
   setup_transmitter();
@@ -43,6 +43,7 @@ void setup() {
 void loop() {
   process_rx_windows();
 
+  // Disabled: seems to interfere with RX/decoding timing; revisit/verify interaction with receiving logic
   // poll_battery();
 }
 
