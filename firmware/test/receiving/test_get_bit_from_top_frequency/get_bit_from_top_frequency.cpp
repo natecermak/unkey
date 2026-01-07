@@ -24,11 +24,11 @@ static void prime_phase_with_alternating_bins() {
     get_bit_from_top_frequency(); // records window history; won’t append yet
   }
   // Reset bit index in case any previous state existed
-  *_test_get_bit_index() = 0;
+  *_test_get_window_index() = 0;
 }
 
 void setUp(void) {
-  *_test_get_bit_index() = 0;
+  *_test_get_window_index() = 0;
 }
 
 void tearDown(void) {
@@ -42,19 +42,19 @@ void test_get_bit_from_top_frequency_sets_bit_to_0_when_mag0_is_stronger(void) {
 
   get_bit_from_top_frequency();
 
-  TEST_ASSERT_EQUAL_UINT8(0, _test_get_bitstream()[0]);
+  TEST_ASSERT_EQUAL_UINT8(0, _test_get_window_stream()[0]);
 }
 
 void test_get_bit_from_top_frequency_does_not_overflow_buffer(void) {
   // Pretends buffer is full:
   static const int MAX_BITS = 256;
-  *_test_get_bit_index() = MAX_BITS;
+  *_test_get_window_index() = MAX_BITS;
 
   // This shouldn't append anything:
   get_bit_from_top_frequency();
 
   // Checks that index didn't change:
-  TEST_ASSERT_EQUAL(MAX_BITS, *_test_get_bit_index());
+  TEST_ASSERT_EQUAL(MAX_BITS, *_test_get_window_index());
 }
 
 void test_get_bit_from_top_frequency_appends_correct_bit(void) {
@@ -71,7 +71,7 @@ void test_get_bit_from_top_frequency_appends_correct_bit(void) {
 
   get_bit_from_top_frequency();
 
-  TEST_ASSERT_EQUAL_UINT8(0x1, _test_get_bitstream()[0]);
+  TEST_ASSERT_EQUAL_UINT8(0x1, _test_get_window_stream()[0]);
 }
 
 
