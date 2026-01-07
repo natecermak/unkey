@@ -1,8 +1,9 @@
 // ==================================================================
 // check_for_complete_packet.cpp
-// Input: bitstream[] (with bit_index bits)
+// Input: window_stream[] (window-level bit guesses) and window_index (count of windows)
 // Output: message (passed to deliver_message())
-// Run just this test with $ pio test -e teensy40_test -f "receiving/test_check_for_complete_packet"
+// Run just this test with:
+//  pio test -e teensy40_test -f "receiving/test_check_for_complete_packet"
 // ==================================================================
 #include <Arduino.h>
 #include <unity.h>

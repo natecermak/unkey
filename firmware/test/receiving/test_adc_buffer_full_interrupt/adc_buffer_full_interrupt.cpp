@@ -3,7 +3,7 @@
 // Input: Filled ADC DMA buffer with sampled data
 // Output: ISR queues windows; process_rx_windows() drains queue and appends bits to window_stream
 // Run just this test with:
-//   pio test -e teensy40_test -f "receiving/test_adc_buffer_full_interrupt"
+//  pio test -e teensy40_test -f "receiving/test_adc_buffer_full_interrupt"
 // ==================================================================
 #include <Arduino.h>
 #include <unity.h>

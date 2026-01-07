@@ -3,7 +3,7 @@
 // Input: Filled ADC samples and current Goertzel states
 // Output: Appends a decoded bit to window_stream[] and checks for packet completion
 // Run just this test with:
-//   pio test -e teensy40_test -f "receiving/test_decode_single_bit_from_adc_window"
+//  pio test -e teensy40_test -f "receiving/test_decode_single_bit_from_adc_window"
 // ==================================================================
 #include <Arduino.h>
 #include <unity.h>
