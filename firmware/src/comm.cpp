@@ -1,6 +1,6 @@
 // ==================================================================
 // comm.cpp
-// Handles analog signal transmission, reception, and DSP setup
+// Handles analog FSK transmission, reception, and DSP (Goertzel)
 // ==================================================================
 #include <Arduino.h> // for digitalWriteFast
 #include <ADC.h>
@@ -63,20 +63,19 @@ static volatile uint8_t rx_queue_read_index = 0;
 static volatile uint8_t rx_queue_count = 0;
 static volatile bool rx_queue_overrun = false;
 
-// Holds one pair of Goertzel magnitudes:
-// Every time G runs, it gives a magnitude for each of the 2 frequencies we're checking
+// Holds one pair of Goertzel magnitudes (2.0 kHz + 2.2 kHz)
 struct goertzel_output_t {
   float mag_2kHz;
   float mag_2_2kHz;
 };
 
-// Stores recent Goertzel magnitudes for each bit window in a circular buffer:
+// Stores recent Goertzel magnitudes in a circular buffer
 static const size_t G_HISTORY_LEN = 16;
 static goertzel_output_t goertzel_history_circ_buffer[G_HISTORY_LEN];
 static size_t goertzel_history_circ_buffer_index = 0;
 
-// If k = the min # of bits that need to be seen in order to identify the bit boundaries in relation to the sampling window,
-// then 2k + = the min # windows (Goertzel outputs) that need to be seen
+// If k = min bits needed to identify bit boundaries relative to sampling windows,
+// then 2k + 1 = min windows (Goertzel outputs) that need to be seen
 // Since k = 3, 2k + 1 = 7
 static const size_t ALIGNMENT_IDENTIFYING_G_OUTPUTS = 7;
 static goertzel_output_t window_history[ALIGNMENT_IDENTIFYING_G_OUTPUTS];
@@ -103,26 +102,24 @@ DMAChannel dma_ch1;
 // DMAMEM places adc_buffer_curr_half in RAM2 (OCRAM):
 DMAMEM static volatile uint16_t __attribute__((aligned(32))) adc_buffer_curr_half[buffer_size];
 
-// Gets incremented every time decode_single_bit_from_adc_window() runs, and decoding
-// only happens when adc_window_counter % SCAN_CHAIN_LENGTH == 0:
+// Gets incremented every time decode_single_bit_from_adc_window() runs
 static uint8_t adc_window_counter = 0;
 
-// An array that will store state for the Goertzel algo - each goertzel_state obj
-// holds data to compute G algo for that frequency:
+// Goertzel filter state (one per target frequency)
 static const uint8_t gs_len = 2;   // only 2 bins: 2.0 kHz and 2.2 kHz
 goertzel_state gs[gs_len];
 
 // Charge amplifier gain:
 static const int adg728_i2c_address = 76;
 
-// For get_bit_from_top_frequency:
+// Bitstream buffer (window-level bit guesses)
 static const int MAX_BITS = 256;
 static uint8_t window_stream[MAX_BITS * WINDOWS_PER_BIT];
 static int window_index = 0;
 static const float MAGNITUDE_THRESHOLD = 5.0f; // TODO: adjust as needed based on testing
 
-// Packet framing bytes:
-// Note: Using two-byte delimiters is more reliable than using one
+// Packet framing bytes (2-byte header + 2-byte footer)
+// Note: Two-byte delimiters reduce false positives vs single-byte framing
 #ifdef UNIT_TEST
 const uint8_t PACKET_START1 = 0x01;
 const uint8_t PACKET_START2 = 0x02;
@@ -136,7 +133,7 @@ static const uint8_t PACKET_END2   = 0x04;
 #endif
 
 // For preamble:
-static const uint16_t PREAMBLE_BITS = 35; // unit is bits. 35 bits * 10 ms = 350 ms total preamble length
+static const uint16_t PREAMBLE_BITS = 35; // bits; duration depends on tx_parameters->usec_per_bit
 
 // ------------------------------------------------------------------
 // Functions
@@ -150,7 +147,7 @@ static const uint16_t PREAMBLE_BITS = 35; // unit is bits. 35 bits * 10 ms = 350
  */
 void write_to_dac(uint8_t address, uint16_t value) {
   uint8_t buf[3];
-  // Bits 1 and 2 must be 0 to write:
+  // SPI frame: bits 1–2 must be 0 for write
   buf[0] = (address << 3);
   buf[1] = (uint8_t)(value >> 8);
   buf[2] = (uint8_t)value;
@@ -167,7 +164,7 @@ void write_to_dac(uint8_t address, uint16_t value) {
  * then drives the DAC sample-by-sample for the full bit duration.
  */
 static inline void transmit_bit(uint8_t bit, const tx_parameters_t* tx_parameters) {
-  // w is the angular frequency, wherein w = 2 * pi * freq
+  // w is radians per microsecond: w = 2πf / 1e6 (f in Hz)
   const float w = (bit ? (2 * PI * tx_parameters->freq_high / 1e6)
                        : (2 * PI * tx_parameters->freq_low /  1e6));
   const unsigned long bit_start_time = micros();
@@ -204,7 +201,7 @@ static inline void transmit_preamble(const tx_parameters_t* tx_parameters) {
 /**
  * FSK transmitter: for each char, emit its 8 bits MSB‑first as tones.
  * Uses freq_low for 0 and freq_high for 1; each bit lasts usec_per_bit microseconds.
- * The sine is generated with w = 2πf and time in microseconds, so f is in Hz and time is µs.
+ * The sine uses w = 2πf/1e6 with time in µs (f in Hz).
  */
 void transmit_message(const char* message_to_transmit, const tx_parameters_t* tx_parameters) {
   transmit_preamble(tx_parameters);
@@ -216,7 +213,7 @@ void transmit_message(const char* message_to_transmit, const tx_parameters_t* tx
     // Translates each of char's 8 bits into a corresponding frequency starting with msb:
     for (int j = 7; j >= 0; j--) {
       int bit = (letter >> j) & 1;
-      // w is the angular frequency, wherein w = 2 * pi * f
+      // w is radians per microsecond: w = 2πf / 1e6 (f in Hz)
       float w = (bit) ? (2 * PI * tx_parameters->freq_high / 1e6)
                       : (2 * PI * tx_parameters->freq_low / 1e6);
       // Start time for the current bit period:
@@ -310,8 +307,8 @@ void deliver_message(const char* message) {
 }
 
 /**
- * Computes the average combined magnitude (2.0 kHz + 2.2 kHz)
- * over the most recent `window_count` entries in window_history.
+ * Computes average combined magnitude over `window_count` entries starting at window_history_index
+ * (not strictly “most recent”).
  */
 static float average_window_magnitude(size_t window_count) {
   float sum = 0.0f;
@@ -541,8 +538,7 @@ void for_each_goertzel_state(void (*one_param_fn)(goertzel_state*), void (*two_p
 }
 
 /**
- * Processes one ADC window at bit-aligned intervals:
- * runs Goertzel, extracts a bit, appends it to the window_stream, checks for a complete packet, then resets Goertzel state.
+ * Processes one ADC sample window (5 ms): runs Goertzel, attempts bit extraction, and packet detection
  */
 void decode_single_bit_from_adc_window(const uint16_t* samples, size_t size) {
   adc_window_counter++;
@@ -572,11 +568,9 @@ void decode_single_bit_from_adc_window(const uint16_t* samples, size_t size) {
 }
 
 /**
- * Called when DMA fills the ADC buffer. Clears the DMA interrupt, invalidates CPU cache for the DMA buffer,
- * passes the fresh samples to the decoder, then re-enables DMA.
- * DMA writes to RAM2 -> decode_single_bit_from_adc_window reads from RAM2.
- * Each ADC buffer ≈ 5 ms (410 samples @ 81.92 kHz). If SCAN_CHAIN_LENGTH == 2 and TX bit period is ~10 ms,
- * two buffers correspond to one bit period, and adc_buffer_full_interrupt() fires every 5 ms.
+ * ISR on DMA completion: clears interrupt, invalidates cache, copies samples into rx queue, re-enables DMA.
+ * DMA writes to RAM2; ISR copies samples into RAM1 rx queue, and decoding reads from RAM1
+ * Each ADC buffer ≈ 5 ms (410 samples @ 81.92 kHz); ISR fires every buffer completion (~5 ms).
  */
 void adc_buffer_full_interrupt() {
   // Clears the DMA interrupt flag so it's ready for the next transfer:
@@ -631,10 +625,6 @@ void process_rx_windows() {
  * sets the gain on the charge amplifier, sets up DMA channel for ADC to send data to buffer.
  */
 void setup_receiver() {
-  // For pulse_begin() / pulse_end():
-  pinMode(1, OUTPUT);
-  digitalWriteFast(1, LOW);
-
   // Sets readPin_adc_0_pin as the input pin for ADC sampling:
   pinMode(readPin_adc_0_pin, INPUT);
 
