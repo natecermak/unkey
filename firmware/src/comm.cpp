@@ -47,7 +47,12 @@ const uint32_t buffer_size = 410;
 static const uint32_t buffer_size = 410;
 #endif
 
+#ifdef UNIT_TEST
+const int WINDOWS_PER_BIT = 2;
+#else
 static const int WINDOWS_PER_BIT = 2;
+#endif
+
 static const float MIN_TONE_MAGNITUDE = 1.0f; // Update value later with more testing
 
 // 2-window queue in RAM1 (DTCM). Each window is one 5ms window (410 samples).
@@ -118,10 +123,17 @@ static const float MAGNITUDE_THRESHOLD = 5.0f; // TODO: adjust as needed based o
 
 // Packet framing bytes:
 // Note: Using two-byte delimiters is more reliable than using one
+#ifdef UNIT_TEST
+const uint8_t PACKET_START1 = 0x01;
+const uint8_t PACKET_START2 = 0x02;
+const uint8_t PACKET_END1   = 0x03;
+const uint8_t PACKET_END2   = 0x04;
+#else
 static const uint8_t PACKET_START1 = 0x01;
 static const uint8_t PACKET_START2 = 0x02;
 static const uint8_t PACKET_END1   = 0x03;
 static const uint8_t PACKET_END2   = 0x04;
+#endif
 
 // For preamble:
 static const uint16_t PREAMBLE_BITS = 35; // unit is bits. 35 bits * 10 ms = 350 ms total preamble length
@@ -452,12 +464,12 @@ void get_bit_from_top_frequency() {
   // Buffer to hold reconstructed bytes from the window_stream:
   static char decoded_bytes[MAX_PACKET_SIZE];
 
-  for (int off = 0; off < 16; off++) {
+  for (int offset = 0; offset < 16; offset++) {
     // Tracks how many full bytes have been reconstructed from the incoming window_stream[]:
     int byte_count = 0;
 
     // decode bytes starting at this offset
-    for (int i = off; i + 15 < window_index; i += 16) {
+    for (int i = offset; i + 15 < window_index; i += 16) {
       uint8_t byte = 0;
       for (int b = 0; b < 8; b++) {
         uint8_t bit = window_stream[i + WINDOWS_PER_BIT * b];
@@ -489,7 +501,10 @@ void get_bit_from_top_frequency() {
     if (end == -1) continue;     // <- was return
 
     int msg_len = end - start;
-    if (msg_len <= 0 || msg_len >= MAX_TEXT_LENGTH) continue;
+    if (msg_len <= 0 || msg_len >= MAX_TEXT_LENGTH) {
+      window_index = 0;
+      return;
+    }
 
     char message[MAX_TEXT_LENGTH];
     memcpy(message, &decoded_bytes[start], msg_len);

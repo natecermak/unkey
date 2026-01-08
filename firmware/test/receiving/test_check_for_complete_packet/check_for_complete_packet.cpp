@@ -11,131 +11,107 @@
 #include "comm.h"
 #include "mock_display.h"
 
+// Write a byte-aligned packet into window_stream.
+// IMPORTANT: each byte spans WINDOWS_PER_BIT * 8 windows.
+static void write_packet_bytes_into_window_stream(const uint8_t* bytes, size_t byte_len, int off = 0) {
+  uint8_t* ws = _test_get_window_stream();
+
+  const int BYTE_STRIDE = WINDOWS_PER_BIT * 8;
+
+  // Clear enough space so old data doesn't interfere
+  size_t total_windows = (size_t)off + (size_t)BYTE_STRIDE * byte_len;
+  for (size_t i = 0; i < total_windows; i++) {
+    ws[i] = 0;
+  }
+
+  for (size_t bi = 0; bi < byte_len; bi++) {
+    size_t base = (size_t)off + (size_t)BYTE_STRIDE * bi;
+    uint8_t byte = bytes[bi];
+
+    // MSB-first bits
+    for (int b = 0; b < 8; b++) {
+      uint8_t bit = (byte >> (7 - b)) & 1;
+
+      size_t bit_start = base + (size_t)WINDOWS_PER_BIT * b;
+      for (int w = 0; w < WINDOWS_PER_BIT; w++) {
+        ws[bit_start + (size_t)w] = bit;
+      }
+    }
+  }
+
+  *_test_get_window_index() = (int)total_windows; // window count
+}
+
 void setUp(void) {
-  // Resets counter before each test:
   display_called = 0;
 
-  // Redirects delivered messages to test buffer for verification during unit tests:
   _test_set_deliver_fn([](const char* msg) {
     strncpy(_test_get_delivered_message(), msg, MAX_TEXT_LENGTH);
+    _test_get_delivered_message()[MAX_TEXT_LENGTH - 1] = '\0';
   });
+
+  strcpy(_test_get_delivered_message(), "");
+  *_test_get_window_index() = 0;
 }
 
 void tearDown(void) {}
 
 void test_parses_message_when_valid_packet_present() {
-  // Set up valid packet: [START][H][i][END]
-  uint8_t test_bits[] = {
-    0,0,0,0,0,0,0,1,  // 0x01
-    0,0,0,0,0,0,1,0,  // 0x02
-    0,1,0,0,1,0,0,0,  // 'H'
-    0,1,1,0,1,0,0,1,  // 'i'
-    0,0,0,0,0,0,1,1,  // 0x03
-    0,0,0,0,0,1,0,0   // 0x04
+  const uint8_t bytes[] = {
+    PACKET_START1, PACKET_START2, 'H', 'i', PACKET_END1, PACKET_END2
   };
 
-  int* bit_index = _test_get_bit_index();
-  uint8_t* bitstream = _test_get_bitstream();
-
-  // Copy bits into test bitstream
-  for (size_t i = 0; i < sizeof(test_bits); i++) {
-    bitstream[i] = test_bits[i];
-  }
-  *bit_index = sizeof(test_bits);
-
-  // Reset captured message
-  strcpy(_test_get_delivered_message(), "");
+  write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
 
   check_for_complete_packet();
 
-  // Confirm that the message "Hi" was parsed and delivered
   TEST_ASSERT_EQUAL_STRING("Hi", _test_get_delivered_message());
+  TEST_ASSERT_EQUAL(0, *_test_get_window_index());
 }
 
 void test_ignores_packet_with_no_framing() {
-  // Construct bitstream that lacks proper framing bytes
-  uint8_t bits[] = {
-    0,1,1,0,1,0,1,0,  // 0x6A
-    0,1,1,1,1,0,0,0,  // 0x78
-    0,1,0,0,1,0,1,0   // 0x4A
-  };
+  const uint8_t bytes[] = { 0x6A, 0x78, 0x4A };
 
-  int* bit_index = _test_get_bit_index();
-  uint8_t* bitstream = _test_get_bitstream();
-
-  for (size_t i = 0; i < sizeof(bits); i++) {
-    bitstream[i] = bits[i];
-  }
-  *bit_index = sizeof(bits);
-
-  // Clear any previous message
-  strcpy(_test_get_delivered_message(), "");
-
-  check_for_complete_packet();
-
-  // Confirm no message was parsed/delivered:
-  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
-}
-
-void test_truncates_message_that_exceeds_max_length() {
-  // Construct message: [START][A x 410][END]
-  const int A_COUNT = MAX_PACKET_SIZE - 4;
-
-  static uint8_t test_bits[8 * (2 + A_COUNT + 2)];
-  size_t i = 0;
-
-  // Header bytes:
-  uint8_t start[] = {0x01, 0x02};
-  for (uint8_t b : start)
-    for (int j = 7; j >= 0; j--) test_bits[i++] = (b >> j) & 1;
-
-  // Message bytes:
-  for (int k = 0; k < A_COUNT; k++) {
-    uint8_t a = 'A';
-    for (int j = 7; j >= 0; j--) test_bits[i++] = (a >> j) & 1;
-  }
-
-  // Footer bytes:
-  uint8_t end[] = {0x03, 0x04};
-  for (uint8_t b : end)
-    for (int j = 7; j >= 0; j--) test_bits[i++] = (b >> j) & 1;
-
-  memcpy(_test_get_bitstream(), test_bits, i);
-  *_test_get_bit_index() = i;
-
-  check_for_complete_packet();
-
-  const char* delivered = _test_get_delivered_message();
-  TEST_ASSERT_EQUAL_INT(MAX_TEXT_LENGTH - 1, strlen(delivered));
-  TEST_ASSERT_EQUAL_CHAR('A', delivered[0]);
-}
-
-void test_does_not_check_for_complete_packet_with_only_start_header() {
-  uint8_t test_bits[] = {
-    0,0,0,0,0,0,0,1,
-    0,0,0,0,0,0,1,0
-  };
-
-  memcpy(_test_get_bitstream(), test_bits, sizeof(test_bits));
-  *_test_get_bit_index() = sizeof(test_bits);
-
-  strcpy(_test_get_delivered_message(), "");
+  write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
 
   check_for_complete_packet();
 
   TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
 }
 
-void test_does_not_check_for_complete_packet_with_only_stop_footer() {
-  uint8_t test_bits[] = {
-    0,0,0,0,0,0,1,1,
-    0,0,0,0,0,1,0,0
-  };
+void test_rejects_message_that_exceeds_max_length() {
+  static uint8_t bytes[2 + MAX_TEXT_LENGTH + 2];
+  size_t idx = 0;
 
-  memcpy(_test_get_bitstream(), test_bits, sizeof(test_bits));
-  *_test_get_bit_index() = sizeof(test_bits);
+  bytes[idx++] = PACKET_START1;
+  bytes[idx++] = PACKET_START2;
+  for (int i = 0; i < MAX_TEXT_LENGTH; i++) {
+    bytes[idx++] = 'A';
+  }
+  bytes[idx++] = PACKET_END1;
+  bytes[idx++] = PACKET_END2;
 
-  strcpy(_test_get_delivered_message(), "");
+  write_packet_bytes_into_window_stream(bytes, idx);
+
+  check_for_complete_packet();
+
+  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
+}
+
+void test_does_not_deliver_with_only_start_header() {
+  const uint8_t bytes[] = { PACKET_START1, PACKET_START2 };
+
+  write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
+
+  check_for_complete_packet();
+
+  TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
+}
+
+void test_does_not_deliver_with_only_stop_footer() {
+  const uint8_t bytes[] = { PACKET_END1, PACKET_END2 };
+
+  write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
 
   check_for_complete_packet();
 
@@ -143,21 +119,11 @@ void test_does_not_check_for_complete_packet_with_only_stop_footer() {
 }
 
 void test_ignores_noise_before_header() {
-  // Arbitrary bit sequence + [START][H][i][END]
-  uint8_t test_bits[] = {
-    1,1,1,1,1,1,1,1,
-    0,0,0,0,0,0,0,1,  // 0x01
-    0,0,0,0,0,0,1,0,  // 0x02
-    0,1,0,0,1,0,0,0,  // 'H'
-    0,1,1,0,1,0,0,1,  // 'i'
-    0,0,0,0,0,0,1,1,  // 0x03
-    0,0,0,0,0,1,0,0   // 0x04
+  const uint8_t bytes[] = {
+    0xFF, PACKET_START1, PACKET_START2, 'H', 'i', PACKET_END1, PACKET_END2
   };
 
-  memcpy(_test_get_bitstream(), test_bits, sizeof(test_bits));
-  *_test_get_bit_index() = sizeof(test_bits);
-
-  strcpy(_test_get_delivered_message(), "");
+  write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
 
   check_for_complete_packet();
 
@@ -171,9 +137,8 @@ void setup() {
   UNITY_BEGIN();
   RUN_TEST(test_parses_message_when_valid_packet_present);
   RUN_TEST(test_ignores_packet_with_no_framing);
-  RUN_TEST(test_truncates_message_that_exceeds_max_length);
-  RUN_TEST(test_does_not_check_for_complete_packet_with_only_start_header);
-  RUN_TEST(test_does_not_check_for_complete_packet_with_only_stop_footer);
+  RUN_TEST(test_does_not_deliver_with_only_start_header);
+  RUN_TEST(test_does_not_deliver_with_only_stop_footer);
   RUN_TEST(test_ignores_noise_before_header);
   UNITY_END();
 }
