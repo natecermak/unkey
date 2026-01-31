@@ -61,7 +61,6 @@ static uint16_t rx_win_q[WINDOWS_PER_BIT][buffer_size];
 static volatile uint8_t rx_queue_write_index = 0;
 static volatile uint8_t rx_queue_read_index = 0;
 static volatile uint8_t rx_queue_count = 0;
-static volatile bool rx_queue_overrun = false;
 
 // Holds one pair of Goertzel magnitudes (2.0 kHz + 2.2 kHz)
 struct goertzel_output_t {
@@ -376,7 +375,6 @@ static void find_bit_boundaries(void) {
 static void reset_receiver_state() {
   noInterrupts();
   rx_queue_write_index = rx_queue_read_index = rx_queue_count = 0;
-  rx_queue_overrun = false;
   interrupts();
 
   window_index = 0;
@@ -586,8 +584,6 @@ void adc_buffer_full_interrupt() {
            sizeof(rx_win_q[0]));
     rx_queue_write_index = (rx_queue_write_index + 1) & 1;
     rx_queue_count++;
-  } else {
-    rx_queue_overrun = true; // dropped a window because loop couldn't keep up
   }
 
   // Re-enables the DMA channel for next read:
