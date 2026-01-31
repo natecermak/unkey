@@ -58,7 +58,7 @@ extern const uint8_t PACKET_START2;
 extern const uint8_t PACKET_END1;
 extern const uint8_t PACKET_END2;
 
-volatile uint16_t* _test_get_adc_buffer_curr_half();
+volatile uint16_t* _test_get_adc_dma_window();
 
 // Normally internal functions; exposed only for unit tests
 void adc_buffer_full_interrupt();

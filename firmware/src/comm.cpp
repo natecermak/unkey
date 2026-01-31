@@ -29,7 +29,7 @@ static void (*deliver_fn_override)(const char*) = nullptr;
 // ------------------------------------------------------------------
 
 /*
-  adc_buffer_curr_half is filled by the DMA and declared with DMAMEM and __attribute__((aligned(32)))
+  adc_dma_window is filled by the DMA and declared with DMAMEM and __attribute__((aligned(32)))
   to place it in RAM2 (OCRAM), which is cacheable and requires manual cache management.
 
   RAM1 = DTCM (Tightly Coupled Memory) --> Not cacheable. Always in sync.
@@ -39,7 +39,7 @@ static void (*deliver_fn_override)(const char*) = nullptr;
   arm_dcache_delete() discards cache so the CPU reads fresh data from RAM2.
 */
 
-// Number of ADC samples per DMA transfer into adc_buffer_curr_half.
+// Number of ADC samples per DMA transfer into adc_dma_window.
 // Samples per window (buffer_size) = adc_sampling_rate * window_duration = 81,920 * 5 ms = 410 samples.
 #ifdef UNIT_TEST
 const uint32_t buffer_size = 410;
@@ -99,8 +99,8 @@ uint16_t tx_display_buffer_length = 0;
 ADC *adc = new ADC();
 DMAChannel dma_ch1;
 
-// DMAMEM places adc_buffer_curr_half in RAM2 (OCRAM):
-DMAMEM static volatile uint16_t __attribute__((aligned(32))) adc_buffer_curr_half[buffer_size];
+// DMAMEM places adc_dma_window in RAM2 (OCRAM):
+DMAMEM static volatile uint16_t __attribute__((aligned(32))) adc_dma_window[buffer_size];
 
 // Gets incremented every time decode_single_bit_from_adc_window() runs
 static uint8_t adc_window_counter = 0;
@@ -576,13 +576,13 @@ void adc_buffer_full_interrupt() {
   // Clears the DMA interrupt flag so it's ready for the next transfer:
   dma_ch1.clearInterrupt();
 
-  // Invalidates CPU cache for adc_buffer_curr_half to ensure CPU sees the latest data written by DMA (RAM2 is cacheable):
-  arm_dcache_delete((void *)adc_buffer_curr_half, sizeof(adc_buffer_curr_half));
+  // Invalidates CPU cache for adc_dma_window to ensure CPU sees the latest data written by DMA (RAM2 is cacheable):
+  arm_dcache_delete((void *)adc_dma_window, sizeof(adc_dma_window));
 
   // copy 1 window into RAM1 queue (fast) instead of calling decode_single_bit_from_adc_window
   if (rx_queue_count < 2) {
     memcpy(rx_win_q[rx_queue_write_index],
-           (const void*)adc_buffer_curr_half,
+           (const void*)adc_dma_window,
            sizeof(rx_win_q[0]));
     rx_queue_write_index = (rx_queue_write_index + 1) & 1;
     rx_queue_count++;
@@ -640,7 +640,7 @@ void setup_receiver() {
   adc->adc0->setResolution(12); // bits
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::HIGH_SPEED);
 
-  // Configures DMA to transfer ADC samples into adc_buffer_curr_half:
+  // Configures DMA to transfer ADC samples into adc_dma_window:
   // Note: The following line may raise a compiler warning because type-punning ADC1_R0 here violates strict aliasing rules, but can be safely ignored
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wstrict-aliasing"
@@ -648,7 +648,7 @@ void setup_receiver() {
   #pragma GCC diagnostic pop
 
   // destinationBuffer takes a byte count here (not samples). The library handles element width internally:
-  dma_ch1.destinationBuffer((uint16_t *)adc_buffer_curr_half, sizeof(adc_buffer_curr_half));
+  dma_ch1.destinationBuffer((uint16_t *)adc_dma_window, sizeof(adc_dma_window));
   dma_ch1.interruptAtCompletion();
   dma_ch1.disableOnCompletion();
 
@@ -703,9 +703,9 @@ uint8_t* _test_get_adc_window_counter() {
   return &adc_window_counter;
 }
 
-// Returns a pointer to adc_buffer_curr_half so tests can fill it with mock ADC data - volatile because it's the DMA destination:
-volatile uint16_t* _test_get_adc_buffer_curr_half() {
-  return adc_buffer_curr_half;
+// Returns a pointer to adc_dma_window so tests can fill it with mock ADC data - volatile because it's the DMA destination:
+volatile uint16_t* _test_get_adc_dma_window() {
+  return adc_dma_window;
 }
 
 #endif

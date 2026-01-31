@@ -13,7 +13,7 @@
 
 static void fill_dma_with_sine(float frequency_hz) {
   const float sr = 81920.0f, amp = 2047.0f, off = 2048.0f;
-  volatile uint16_t* buf = _test_get_adc_buffer_curr_half();
+  volatile uint16_t* buf = _test_get_adc_dma_window();
 
   for (uint32_t i = 0; i < buffer_size; ++i) {
     float t = (float)i / sr;
@@ -25,7 +25,7 @@ static void fill_dma_with_sine(float frequency_hz) {
 }
 
 static void fill_dma_constant(uint16_t value) {
-  volatile uint16_t* buf = _test_get_adc_buffer_curr_half();
+  volatile uint16_t* buf = _test_get_adc_dma_window();
   for (uint32_t i = 0; i < buffer_size; ++i) buf[i] = value;
   arm_dcache_flush((void*)buf, sizeof(uint16_t) * buffer_size);
 }
