@@ -142,14 +142,14 @@ firmware/
 │   ├── receiving/
 │   │   ├── test_adc_buffer_full_interrupt/
 │   │   │   └── adc_buffer_full_interrupt.cpp
-│   │   ├── test_decode_single_bit_from_adc_window/
-│   │   │   └── decode_single_bit_from_adc_window.cpp
+│   │   ├── test_check_for_complete_packet/
+│   │   │   └── check_for_complete_packet.cpp
 │   │   ├── test_deliver_message/
 │   │   │   └── deliver_message.cpp
 │   │   ├── test_get_bit_from_top_frequency/
 │   │   │   └── get_bit_from_top_frequency.cpp
-│   │   ├── test_parse_message/
-│   │   │   └── parse_message.cpp
+│   │   ├── test_decode_single_bit_from_adc_window/
+│   │   │   └── decode_single_bit_from_adc_window.cpp
 │   ├── transmitting/
 │   │   └── test_packetize_message/
 │   │       └── packetize_message.cpp
