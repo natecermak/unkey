@@ -115,6 +115,23 @@ v1.3 pcb
  - [X] make an attempt at a BOM
 
 ---
+## Transmit / Receive Signal Flow
+
+### Signal Modulation Process:
+
+Unkey uses binary frequency-shift keying (BFSK) to transmit data acoustically. Each bit is encoded as a short sine wave at one of two fixed frequencies: one frequency represents a 0, and the other represents a 1. Bits are sent at a fixed bit rate, and bytes are transmitted MSB-first. Each packet begins with a known alternating preamble pattern, followed by framed payload bytes and an explicit footer. The preamble exists solely to help the receiver discover bit timing and alignment before attempting to decode data.
+
+On the transmit side, text messages are packetized into bytes, converted into a bit stream, and then emitted as a sequence of tone windows via the DAC and piezo transducer. Each window contains a single tone corresponding to the current bit.
+
+### Receiver Demodulation Process:
+
+The receiver samples audio continuously using the ADC and DMA, processing fixed-size time windows of samples. For each window, it runs two Goertzel detectors—one tuned to each BFSK frequency—and measures their relative magnitudes. If neither tone is strong enough, the window is treated as noise and ignored.
+
+Rather than assuming fixed timing, the receiver first builds a rolling history of recent window-level tone decisions. Once enough history is collected and the average signal strength is high enough, the receiver searches this history for the known alternating preamble pattern. It does this by trying both possible window alignments and checking for repeated tone flips; when a consistent pattern is found, bit boundaries are considered “locked.”
+
+After timing is locked, each aligned window produces a real bit. These bits are accumulated and scanned for valid packet framing (header and footer). When a complete frame is detected, the payload is extracted, validated, and delivered to the chat system. If the signal weakens or framing fails for too long, the receiver drops alignment and returns to waiting for the preamble.
+
+---
 
 ## Firmware File Organization
 
