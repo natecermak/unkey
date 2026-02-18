@@ -58,7 +58,8 @@ typedef struct _goertzel_output {
   float mag_2_2kHz;
 } goertzel_output_t;
 
-// Long history: optional analysis/plotting. Short rolling window below is used for bit-boundary detection.
+// Single circular buffer for Goertzel magnitudes: used for analysis/plotting and for bit-boundary
+// detection (last ALIGNMENT_IDENTIFYING_G_OUTPUTS entries).
 static const size_t G_HISTORY_LEN = 16;
 static goertzel_output_t goertzel_history_circ_buffer[G_HISTORY_LEN];
 static size_t goertzel_history_circ_buffer_index = 0;
@@ -66,8 +67,6 @@ static size_t goertzel_history_circ_buffer_index = 0;
 // If k = min bits needed to identify bit boundaries relative to sampling windows,
 // then 2k + 1 = min windows (Goertzel outputs) that need to be seen. Since k = 3, 2k + 1 = 7.
 static const size_t ALIGNMENT_IDENTIFYING_G_OUTPUTS = 7;
-static goertzel_output_t window_history[ALIGNMENT_IDENTIFYING_G_OUTPUTS];
-static size_t window_history_index = 0;
 static bool bit_boundaries_are_known = false;
 static uint8_t bit_alignment_phase = 0; // 0 = even windows, 1 = odd windows
 static bool have_enough_windows = false;
@@ -283,10 +282,10 @@ void deliver_message(const char* message) {
  * Computes average combined magnitude over `window_count` entries in the circular history starting at `history_index`
  * (not strictly “most recent”).
  */
-static float average_window_magnitude(size_t window_count, const goertzel_output_t* window_hist, size_t history_index) {
+static float average_window_magnitude(size_t window_count, const goertzel_output_t* window_hist, size_t history_len, size_t history_index) {
   float sum = 0.0f;
   for (size_t i = 0; i < window_count; i++) {
-    size_t index = (history_index + i) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
+    size_t index = (history_index + i) % history_len;
     sum += window_hist[index].mag_2kHz + window_hist[index].mag_2_2kHz;
   }
   return sum / window_count;
@@ -303,7 +302,7 @@ static inline uint8_t determine_bit(const goertzel_output_t* g_ouput) {
 }
 
 /**
- * Uses the rolling window_history to decide bit boundaries.
+ * Uses the last ALIGNMENT_IDENTIFYING_G_OUTPUTS entries of the Goertzel history to decide bit boundaries.
  * Checks both possible phases; if at least 3 alternating 0/1 pairs
  * are found and average magnitude is above threshold,
  * sets bit_alignment_phase and marks boundaries as known.
@@ -311,8 +310,10 @@ static inline uint8_t determine_bit(const goertzel_output_t* g_ouput) {
 static void find_bit_boundaries(void) {
   if (!have_enough_windows || bit_boundaries_are_known) return;
 
-  // Basically just deciding here the signal is viable if the average magnitude is above some predetermined threshold
-  float avg_mag = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS, window_history, window_history_index);
+  // Base index for the "last 7" entries in the circular buffer
+  const size_t base = (goertzel_history_circ_buffer_index + G_HISTORY_LEN - ALIGNMENT_IDENTIFYING_G_OUTPUTS) % G_HISTORY_LEN;
+
+  float avg_mag = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS, goertzel_history_circ_buffer, G_HISTORY_LEN, base);
   if (avg_mag < MAGNITUDE_THRESHOLD) return;
 
   // Outer loop tries both phases
@@ -321,11 +322,11 @@ static void find_bit_boundaries(void) {
 
     // Inner loop tries pairs of windows for each phase
     for (size_t i = 0; i + 1 < ALIGNMENT_IDENTIFYING_G_OUTPUTS; i += 2) {
-      size_t idx0 = (window_history_index + i + phase) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
-      size_t idx1 = (window_history_index + i + 1 + phase) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
+      size_t idx0 = (base + i + phase) % G_HISTORY_LEN;
+      size_t idx1 = (base + i + 1 + phase) % G_HISTORY_LEN;
 
-      uint8_t b0 = determine_bit(&window_history[idx0]);
-      uint8_t b1 = determine_bit(&window_history[idx1]);
+      uint8_t b0 = determine_bit(&goertzel_history_circ_buffer[idx0]);
+      uint8_t b1 = determine_bit(&goertzel_history_circ_buffer[idx1]);
 
       // Skip if either window was ambiguous (tie → 255)
       if (b0 == 255 || b1 == 255) continue;
@@ -343,6 +344,7 @@ static void find_bit_boundaries(void) {
   }
 }
 
+// TODO (future refactor): bundle receiver state into a struct and pass to reset_receiver_state(&state).
 static void reset_receiver_state() {
   noInterrupts();
   rx_queue_write_index = rx_queue_read_index = rx_queue_count = 0;
@@ -356,7 +358,6 @@ static void reset_receiver_state() {
   windows_collected = 0;
   consecutive_weak_windows = 0;
 
-  window_history_index = 0;
   goertzel_history_circ_buffer_index = 0;
 }
 
@@ -370,13 +371,9 @@ void get_bit_from_top_frequency() {
   float mag_2kHz = sqrtf(powf(gs[0].y_re, 2) + powf(gs[0].y_im, 2));
   float mag_2_2kHz = sqrtf(powf(gs[1].y_re, 2) + powf(gs[1].y_im, 2));
 
-  // Stores magnitudes in circ buffer for later analysis:
+  // Single circular buffer: stores magnitudes for analysis and for bit-boundary detection (last 7 used).
   goertzel_history_circ_buffer[goertzel_history_circ_buffer_index] = { mag_2kHz, mag_2_2kHz };
   goertzel_history_circ_buffer_index = (goertzel_history_circ_buffer_index + 1) % G_HISTORY_LEN;
-
-  // Keeps a short rolling history used for boundary detection:
-  window_history[window_history_index] = { mag_2kHz, mag_2_2kHz };
-  window_history_index = (window_history_index + 1) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
 
   // Keep counting windows until we’ve seen enough to attempt boundary detection:
   if (!have_enough_windows) {
@@ -386,7 +383,7 @@ void get_bit_from_top_frequency() {
     }
   }
 
-  // Use the rolling window_history to determine where bit edges fall (sets bit_boundaries_are_known/bit_alignment_phase):
+  // Use last 7 entries of Goertzel history to determine bit edges (sets bit_boundaries_are_known/bit_alignment_phase):
   find_bit_boundaries();
 
   // If boundaries aren’t established yet, stop here (only magnitudes logged this window):
@@ -394,8 +391,9 @@ void get_bit_from_top_frequency() {
     return;
   }
 
-  // Boundaries are known → keep monitoring average strength:
-  float avg_mag_lock = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS, window_history, window_history_index);
+  // Boundaries are known → keep monitoring average strength (last 7 entries of circ buffer):
+  const size_t base = (goertzel_history_circ_buffer_index + G_HISTORY_LEN - ALIGNMENT_IDENTIFYING_G_OUTPUTS) % G_HISTORY_LEN;
+  float avg_mag_lock = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS, goertzel_history_circ_buffer, G_HISTORY_LEN, base);
   if (avg_mag_lock < MAGNITUDE_THRESHOLD) {
     if (++consecutive_weak_windows >= MAX_WEAK_WINDOWS) {
       // Signal stayed weak too long → reset state:
