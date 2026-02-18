@@ -8,7 +8,7 @@ Acoustic communication is basically the only feasible scheme underwater, and hen
 
 Underwater environments (a) add a lot of noise and (b) distort signals due to reflections.
 
-Here, we use a **FM/AM/OFDM** scheme to send bits.
+Here, we use **binary frequency-shift keying (BFSK)** to send bits. See [Transmit / Receive Signal Flow](#transmit--receive-signal-flow) for how modulation and demodulation work.
 
 ## Subsystems:
 
