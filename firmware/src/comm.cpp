@@ -295,14 +295,14 @@ void deliver_message(const char* message) {
 }
 
 /**
- * Computes average combined magnitude over `window_count` entries starting at window_history_index
+ * Computes average combined magnitude over `window_count` entries in the circular history starting at `history_index`
  * (not strictly “most recent”).
  */
-static float average_window_magnitude(size_t window_count) {
+static float average_window_magnitude(size_t window_count, const goertzel_output_t* window_hist, size_t history_index) {
   float sum = 0.0f;
   for (size_t i = 0; i < window_count; i++) {
-    size_t index = (window_history_index + i) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
-    sum += window_history[index].mag_2kHz + window_history[index].mag_2_2kHz;
+    size_t index = (history_index + i) % ALIGNMENT_IDENTIFYING_G_OUTPUTS;
+    sum += window_hist[index].mag_2kHz + window_hist[index].mag_2_2kHz;
   }
   return sum / window_count;
 }
@@ -327,7 +327,7 @@ static void find_bit_boundaries(void) {
   if (!have_enough_windows || bit_boundaries_are_known) return;
 
   // Basically just deciding here the signal is viable if the average magnitude is above some predetermined threshold
-  float avg_mag = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS);
+  float avg_mag = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS, window_history, window_history_index);
   if (avg_mag < MAGNITUDE_THRESHOLD) return;
 
   // Outer loop tries both phases
@@ -410,7 +410,7 @@ void get_bit_from_top_frequency() {
   }
 
   // Boundaries are known → keep monitoring average strength:
-  float avg_mag_lock = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS);
+  float avg_mag_lock = average_window_magnitude(ALIGNMENT_IDENTIFYING_G_OUTPUTS, window_history, window_history_index);
   if (avg_mag_lock < MAGNITUDE_THRESHOLD) {
     if (++consecutive_weak_windows >= MAX_WEAK_WINDOWS) {
       // Signal stayed weak too long → reset state:
