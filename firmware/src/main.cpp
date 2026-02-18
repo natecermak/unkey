@@ -1,6 +1,6 @@
 // ==================================================================
 // main.cpp
-// Entry point: initializes all modules and runs main event loop
+// Arduino entry point: initializes modules in setup() and runs loop()
 // ==================================================================
 #include <SPI.h>
 #include <Wire.h>
@@ -17,36 +17,34 @@
 #ifndef UNIT_TEST
 
 void setup() {
-  // Initializes serial communication with Teensy at baud rate of 9600 bps:
   Serial.begin(9600);
-  // Checks if connection is working and waits up to 5 sec for it to happen:
+
+  // Waits up to 5s for the Serial connection (USB) to become available
   while (!Serial && millis() < 5000) ;
   delay(100);
-  Serial.println("============================\nStarting setup()");
 
-  // SPI commuincation bus for keyboard/display etc:
+  // SPI bus init (keyboard/display/etc.)
   SPI.begin();
-  // I2C communication bus for charge amplifier:
+  // I2C bus init (charge amplifier)
   Wire.begin();
-  // Specifies 12-bit resolution:
+  // Sets ADC read resolution to 12-bit
   analogReadResolution(12);
 
-  // Testing purposes only:
-  test_incoming_message.begin(incoming_message_callback, 1000000);
+  // Testing only: timer-driven simulated incoming messages (currently disabled)
+  // test_incoming_message.begin(incoming_message_callback, 1000000);
 
-  // Module setup:
+  // Module init
   setup_screen();
   setup_receiver();
   setup_transmitter();
   setup_keyboard_poller();
-
-  Serial.println("setup() complete\n============================");
 }
 
 void loop() {
-  // uint16_t val = 2048 + 2047 * sin(2*3.14159*micros()/1e6 * 1.5e3);
+  process_rx_windows();
 
-  poll_battery();
+  // Disabled: seems to interfere with RX/decoding timing; revisit/verify interaction with receiving logic
+  // poll_battery();
 }
 
 #endif

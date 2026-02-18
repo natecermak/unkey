@@ -2,7 +2,8 @@
 // deliver_message.cpp
 // Input: A const char* message (the string to deliver)
 // Output: Updates chat history, updates display with that message
-// Run just this test with $ pio test -e teensy40_test -f "receiving/test_deliver_message"
+// Run just this test with:
+//  pio test -e teensy40_test -f "receiving/test_deliver_message"
 // ==================================================================
 #include <Arduino.h>
 #include <unity.h>

@@ -1,7 +1,7 @@
 // ==================================================================
 // mock_display.cpp
 // Provides a mock implementations from display.cpp
-// for unit testing deliver_message, parse_message, etc.
+// for unit testing deliver_message, check_for_complete_packet, etc.
 // ==================================================================
 #include "chat_logic.h"
 
