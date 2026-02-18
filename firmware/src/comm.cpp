@@ -44,7 +44,8 @@ static void (*deliver_fn_override)(const char*) = nullptr;
 // buffer_size and WINDOWS_PER_BIT are #defined in comm.h.
 static const float MIN_TONE_MAGNITUDE = 1.0f; // Update value later with more testing
 
-// 2-window queue in RAM1 (DTCM). Each window is one 5ms window (410 samples).
+// 2-slot queue in RAM1 (DTCM). Double-buffer: ISR writes one slot while main loop reads the other,
+// so we never process a window that DMA is still filling. Each slot is one 5 ms window (410 samples).
 static uint16_t rx_win_q[WINDOWS_PER_BIT][buffer_size];
 
 static volatile uint8_t rx_queue_write_index = 0;
@@ -57,14 +58,13 @@ typedef struct _goertzel_output {
   float mag_2_2kHz;
 } goertzel_output_t;
 
-// Stores recent Goertzel magnitudes in a circular buffer
+// Long history: optional analysis/plotting. Short rolling window below is used for bit-boundary detection.
 static const size_t G_HISTORY_LEN = 16;
 static goertzel_output_t goertzel_history_circ_buffer[G_HISTORY_LEN];
 static size_t goertzel_history_circ_buffer_index = 0;
 
 // If k = min bits needed to identify bit boundaries relative to sampling windows,
-// then 2k + 1 = min windows (Goertzel outputs) that need to be seen
-// Since k = 3, 2k + 1 = 7
+// then 2k + 1 = min windows (Goertzel outputs) that need to be seen. Since k = 3, 2k + 1 = 7.
 static const size_t ALIGNMENT_IDENTIFYING_G_OUTPUTS = 7;
 static goertzel_output_t window_history[ALIGNMENT_IDENTIFYING_G_OUTPUTS];
 static size_t window_history_index = 0;
@@ -200,22 +200,7 @@ void transmit_message(const char* message_to_transmit, const tx_parameters_t* tx
 
     // Translates each of char's 8 bits into a corresponding frequency starting with msb:
     for (int j = 7; j >= 0; j--) {
-      int bit = (letter >> j) & 1;
-      // w is radians per microsecond: w = 2πf / 1e6 (f in Hz)
-      float w = (bit) ? (2 * PI * tx_parameters->freq_high / 1e6)
-                      : (2 * PI * tx_parameters->freq_low / 1e6);
-      // Start time for the current bit period:
-      unsigned long bit_start = micros();
-      unsigned long time_usec;
-      uint16_t dac_value;
-      // Generates a sine wave for the current bit for usec_per_bit microseconds:
-      while ((time_usec = micros() - bit_start) < tx_parameters->usec_per_bit) {
-        // Gets the phase angle at curr time in microsec and scales for 12 bit DAC:
-        dac_value = (uint16_t)(((sin(w * time_usec) + 1.0) / 2.0) * 4095);
-        noInterrupts();
-        write_to_dac(0, dac_value);
-        interrupts();
-      }
+      transmit_bit((uint8_t)((letter >> j) & 1), tx_parameters);
     }
   }
 }
