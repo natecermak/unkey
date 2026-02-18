@@ -64,7 +64,8 @@ void adc_buffer_full_interrupt();
 void decode_single_bit_from_adc_window(const uint16_t* samples, size_t size);
 void deliver_message(const char* message);
 void get_bit_from_top_frequency();
-void check_for_complete_packet();
+// Returns payload length on success (and fills message, null-terminated); 0 if no complete packet.
+size_t check_for_complete_packet(char* message, size_t message_cap);
 
 #endif // UNIT_TEST
 

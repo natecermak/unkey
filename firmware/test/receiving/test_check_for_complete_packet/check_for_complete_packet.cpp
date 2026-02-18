@@ -63,7 +63,10 @@ void test_parses_message_when_valid_packet_present() {
 
   write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
 
-  check_for_complete_packet();
+  char msg_buf[MAX_TEXT_LENGTH];
+  if (check_for_complete_packet(msg_buf, sizeof(msg_buf)) > 0) {
+    deliver_message(msg_buf);
+  }
 
   TEST_ASSERT_EQUAL_STRING("Hi", _test_get_delivered_message());
   TEST_ASSERT_EQUAL(0, *_test_get_window_index());
@@ -74,7 +77,8 @@ void test_ignores_packet_with_no_framing() {
 
   write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
 
-  check_for_complete_packet();
+  char msg_buf[MAX_TEXT_LENGTH];
+  check_for_complete_packet(msg_buf, sizeof(msg_buf));
 
   TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
 }
@@ -93,7 +97,8 @@ void test_rejects_message_that_exceeds_max_length() {
 
   write_packet_bytes_into_window_stream(bytes, idx);
 
-  check_for_complete_packet();
+  char msg_buf[MAX_TEXT_LENGTH];
+  check_for_complete_packet(msg_buf, sizeof(msg_buf));
 
   TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
 }
@@ -103,7 +108,8 @@ void test_does_not_deliver_with_only_start_header() {
 
   write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
 
-  check_for_complete_packet();
+  char msg_buf[MAX_TEXT_LENGTH];
+  check_for_complete_packet(msg_buf, sizeof(msg_buf));
 
   TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
 }
@@ -113,7 +119,8 @@ void test_does_not_deliver_with_only_stop_footer() {
 
   write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
 
-  check_for_complete_packet();
+  char msg_buf[MAX_TEXT_LENGTH];
+  check_for_complete_packet(msg_buf, sizeof(msg_buf));
 
   TEST_ASSERT_EQUAL_STRING("", _test_get_delivered_message());
 }
@@ -125,7 +132,10 @@ void test_ignores_noise_before_header() {
 
   write_packet_bytes_into_window_stream(bytes, sizeof(bytes));
 
-  check_for_complete_packet();
+  char msg_buf[MAX_TEXT_LENGTH];
+  if (check_for_complete_packet(msg_buf, sizeof(msg_buf)) > 0) {
+    deliver_message(msg_buf);
+  }
 
   TEST_ASSERT_EQUAL_STRING("Hi", _test_get_delivered_message());
 }

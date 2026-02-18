@@ -437,11 +437,14 @@ void get_bit_from_top_frequency() {
 }
 
 /**
- * Reassembles bytes MSB‑first from window_stream[], searches for 2‑byte header/footer,
- * copies the payload to a C‑string, delivers it, then resets the bit buffer.
+ * Reassembles bytes MSB‑first from window_stream[], searches for 2‑byte header/footer.
+ * On success copies the payload into message[], null-terminates, resets the bit buffer,
+ * and returns the payload length. Returns 0 if no valid packet found.
  * Header: PACKET_START1, PACKET_START2. Footer: PACKET_END1, PACKET_END2.
  */
- void check_for_complete_packet() {
+size_t check_for_complete_packet(char* message, size_t message_cap) {
+  if (message == nullptr || message_cap == 0) return 0;
+
   // Buffer to hold reconstructed bytes from the window_stream:
   static char decoded_bytes[MAX_PACKET_SIZE];
 
@@ -470,7 +473,7 @@ void get_bit_from_top_frequency() {
         break;
       }
     }
-    if (start == -1) continue;   // <- was return
+    if (start == -1) continue;
 
     // Scans for packet end (footer):
     int end = -1;
@@ -481,27 +484,21 @@ void get_bit_from_top_frequency() {
         break;
       }
     }
-    if (end == -1) continue;     // <- was return
+    if (end == -1) continue;
 
-    int msg_len = end - start;
-    if (msg_len <= 0 || msg_len >= MAX_TEXT_LENGTH) {
+    size_t msg_len = (size_t)(end - start);
+    if (msg_len == 0 || msg_len >= MAX_TEXT_LENGTH || msg_len >= message_cap) {
       window_index = 0;
-      return;
+      return 0;
     }
 
-    char message[MAX_TEXT_LENGTH];
     memcpy(message, &decoded_bytes[start], msg_len);
     message[msg_len] = '\0';
 
-    // Adds message to chat history and displays it:
-    deliver_message(message);
-
-    // Resets bit buffer:
     window_index = 0;
-
-    return; // success case
+    return msg_len;
   }
-  // If here: tried all offsets, nothing valid found
+  return 0;
 }
 
 /**
@@ -547,7 +544,10 @@ void decode_single_bit_from_adc_window(const uint16_t* samples, size_t size) {
   }
 
   get_bit_from_top_frequency();
-  check_for_complete_packet();
+  char msg_buf[MAX_TEXT_LENGTH];
+  if (check_for_complete_packet(msg_buf, sizeof(msg_buf)) > 0) {
+    deliver_message(msg_buf);
+  }
 
   // Resets internal Goertzel state (not y_re/y_im):
   for_each_goertzel_state(reset_goertzel, NULL, -1);
@@ -597,7 +597,10 @@ void process_rx_windows() {
 
     if (++scan_div >= 16) {
       scan_div = 0;
-      check_for_complete_packet();
+      char msg_buf[MAX_TEXT_LENGTH];
+      if (check_for_complete_packet(msg_buf, sizeof(msg_buf)) > 0) {
+        deliver_message(msg_buf);
+      }
     }
   }
 }
