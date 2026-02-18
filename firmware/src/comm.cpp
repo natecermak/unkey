@@ -456,7 +456,9 @@ void get_bit_from_top_frequency() {
         uint8_t bit = window_stream[i + WINDOWS_PER_BIT * b];
         byte = (byte << 1) | bit;
       }
-      if (byte_count < MAX_PACKET_SIZE) decoded_bytes[byte_count++] = (char)byte;
+      if (byte_count < MAX_PACKET_SIZE) {
+        decoded_bytes[byte_count++] = (char)byte;
+      }
     }
 
     // Scans for packet start (header):
@@ -568,7 +570,7 @@ void adc_buffer_full_interrupt() {
     memcpy(rx_win_q[rx_queue_write_index],
            (const void*)adc_dma_window,
            sizeof(rx_win_q[0]));
-    rx_queue_write_index = (rx_queue_write_index + 1) & 1;
+    rx_queue_write_index = (rx_queue_write_index + 1) % 2;
     rx_queue_count++;
   }
 
@@ -584,12 +586,10 @@ void process_rx_windows() {
   static uint8_t scan_div = 0;
 
   while (true) {
-    uint8_t slot;
-
     noInterrupts();
     if (rx_queue_count == 0) { interrupts(); break; }
-    slot = rx_queue_read_index;
-    rx_queue_read_index = (rx_queue_read_index + 1) & 1;
+    uint8_t slot = rx_queue_read_index;
+    rx_queue_read_index = (rx_queue_read_index + 1) % 2;
     rx_queue_count--;
     interrupts();
 
