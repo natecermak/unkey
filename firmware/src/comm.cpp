@@ -95,7 +95,7 @@ static uint8_t adc_window_counter = 0;
 
 // Goertzel filter state (one per target frequency)
 static const uint8_t gs_len = 2;   // only 2 bins: 2.0 kHz and 2.2 kHz
-goertzel_state gs[gs_len];
+static goertzel_state gs[gs_len];
 
 // Charge amplifier gain:
 static const int adg728_i2c_address = 76;
