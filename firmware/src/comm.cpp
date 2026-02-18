@@ -548,7 +548,8 @@ void adc_buffer_full_interrupt() {
   // Invalidates CPU cache for adc_dma_window to ensure CPU sees the latest data written by DMA (RAM2 is cacheable):
   arm_dcache_delete((void *)adc_dma_window, sizeof(adc_dma_window));
 
-  // copy 1 window into RAM1 queue (fast) instead of calling decode_single_bit_from_adc_window
+  // Copy 1 window into RAM1 queue (fast). If queue is full (2 slots), drop this window so the
+  // main loop always sees a consistent pair; overwriting would mix old and new data in one slot.
   if (rx_queue_count < 2) {
     memcpy(rx_win_q[rx_queue_write_index],
            (const void*)adc_dma_window,
@@ -568,7 +569,7 @@ void adc_buffer_full_interrupt() {
 void process_rx_windows() {
   static uint8_t scan_div = 0;
 
-  while (true) {
+  while (rx_queue_count != 0) {
     noInterrupts();
     if (rx_queue_count == 0) { interrupts(); break; }
     uint8_t slot = rx_queue_read_index;
