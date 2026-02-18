@@ -9,6 +9,9 @@
 
 #include "config.h"
 
+#define buffer_size 410
+#define WINDOWS_PER_BIT 2
+
 extern uint16_t tx_display_buffer_length;
 
 // Updated in an ISR; volatile prevents the compiler from caching these values in registers
@@ -48,10 +51,6 @@ void _test_set_deliver_fn(void (*fn)(const char*));
 
 // Exposes adc_window_counter so tests can modify/reset it
 uint8_t* _test_get_adc_window_counter();
-
-extern const uint32_t buffer_size;
-
-extern const int WINDOWS_PER_BIT;
 
 extern const uint8_t PACKET_START1;
 extern const uint8_t PACKET_START2;

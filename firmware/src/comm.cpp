@@ -41,18 +41,7 @@ static void (*deliver_fn_override)(const char*) = nullptr;
 
 // Number of ADC samples per DMA transfer into adc_dma_window.
 // Samples per window (buffer_size) = adc_sampling_rate * window_duration = 81,920 * 5 ms = 410 samples.
-#ifdef UNIT_TEST
-const uint32_t buffer_size = 410;
-#else
-static const uint32_t buffer_size = 410;
-#endif
-
-#ifdef UNIT_TEST
-const int WINDOWS_PER_BIT = 2;
-#else
-static const int WINDOWS_PER_BIT = 2;
-#endif
-
+// buffer_size and WINDOWS_PER_BIT are #defined in comm.h.
 static const float MIN_TONE_MAGNITUDE = 1.0f; // Update value later with more testing
 
 // 2-window queue in RAM1 (DTCM). Each window is one 5ms window (410 samples).
@@ -63,10 +52,10 @@ static volatile uint8_t rx_queue_read_index = 0;
 static volatile uint8_t rx_queue_count = 0;
 
 // Holds one pair of Goertzel magnitudes (2.0 kHz + 2.2 kHz)
-struct goertzel_output_t {
+typedef struct _goertzel_output {
   float mag_2kHz;
   float mag_2_2kHz;
-};
+} goertzel_output_t;
 
 // Stores recent Goertzel magnitudes in a circular buffer
 static const size_t G_HISTORY_LEN = 16;
@@ -141,7 +130,7 @@ static const uint16_t PREAMBLE_BITS = 35; // bits; duration depends on tx_parame
 /**
  * Sends a 24‑bit SPI frame to the DAC: [addr/ctrl (8)] + [data (16)].
  * For MCP48CxDx1: top byte = 5‑bit register address + 2 command bits (must be 0 to write) + 1 don't‑care.
- * Lower 16 bits carry the 12‑bit value (left‑aligned as per device spec; unused bits are don't‑care).
+ * Lower 16 bits carry the 12‑bit value (right‑aligned: bits 15–12 ignored, 11–0 used).
  * Expects value in the 0..4095 range.
  */
 void write_to_dac(uint8_t address, uint16_t value) {
@@ -369,9 +358,6 @@ static void find_bit_boundaries(void) {
   }
 }
 
-/**
- *
- */
 static void reset_receiver_state() {
   noInterrupts();
   rx_queue_write_index = rx_queue_read_index = rx_queue_count = 0;
